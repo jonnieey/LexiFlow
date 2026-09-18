@@ -1,8 +1,11 @@
 # type: ignore
+import asyncio
+import json
 import os
 import sys
 from argparse import Namespace
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import cmd2
@@ -307,6 +310,53 @@ purge_parser.add_argument("-r", "--raw", help="Raw sql query")
 backup_parser = base_subparsers.add_parser("backup", help="backup database")
 restore_parser = base_subparsers.add_parser(
     "restore", help="restore database"
+)
+
+
+transcribe_parser = base_subparsers.add_parser(
+    "transcribe", help="submit/poll/fetch external transcription for a job"
+)
+transcribe_subparsers = transcribe_parser.add_subparsers(
+    title="subcommands", help="subcommand help"
+)
+
+TRANSCRIPTION_PROVIDERS = ["speechmatics", "revai", "notebooklm"]
+
+transcribe_submit_parser = transcribe_subparsers.add_parser(
+    "submit", help="submit a job's media file for transcription"
+)
+transcribe_submit_parser.add_argument(
+    "-j", "--job_id", type=int, required=True, help="Job ID"
+)
+transcribe_submit_parser.add_argument(
+    "-P",
+    "--provider",
+    choices=TRANSCRIPTION_PROVIDERS,
+    required=True,
+    help="Transcription provider",
+)
+transcribe_submit_parser.add_argument(
+    "--vocabulary",
+    help="Comma-separated additional vocabulary terms",
+)
+
+transcribe_status_parser = transcribe_subparsers.add_parser(
+    "status", help="poll transcription status for a job"
+)
+transcribe_status_parser.add_argument(
+    "-j", "--job_id", type=int, required=True, help="Job ID"
+)
+
+transcribe_fetch_parser = transcribe_subparsers.add_parser(
+    "fetch", help="fetch the transcript for a job"
+)
+transcribe_fetch_parser.add_argument(
+    "-j", "--job_id", type=int, required=True, help="Job ID"
+)
+transcribe_fetch_parser.add_argument(
+    "-m",
+    "--metadata",
+    help="Path to a metadata JSON file to enhance the transcript request",
 )
 
 
@@ -1348,6 +1398,90 @@ class TranscriptorCMD(cmd2.Cmd):
             self.poutput("Invalid input. Please enter a number.")
         except Exception as e:
             self.poutput(f"Error restoring backup: {e}")
+
+    def transcribe_submit(self, args: Namespace):
+        vocabulary = None
+        if args.vocabulary:
+            vocabulary = [
+                term.strip()
+                for term in args.vocabulary.split(",")
+                if term.strip()
+            ]
+        try:
+            external_id = asyncio.run(
+                self.app.submit_transcription(
+                    args.job_id,
+                    args.provider,
+                    additional_vocabulary=vocabulary,
+                )
+            )
+            self.poutput(
+                f"Submitted job {args.job_id} to {args.provider}: {external_id}"
+            )
+        except (ValueError, FileNotFoundError) as e:
+            self.poutput(f"Error: {e}")
+        except Exception as e:
+            self.poutput(f"Error submitting transcription: {e}")
+
+    transcribe_submit_parser.set_defaults(func=transcribe_submit)
+
+    def transcribe_status(self, args: Namespace):
+        try:
+            status = asyncio.run(
+                self.app.poll_transcription_status(args.job_id)
+            )
+        except ValueError as e:
+            self.poutput(f"Error: {e}")
+            return
+        except Exception as e:
+            self.poutput(f"Error polling transcription status: {e}")
+            return
+
+        if status is None:
+            self.poutput(
+                f"Job {args.job_id} has no transcription in progress, "
+                "or the provider poll failed."
+            )
+        else:
+            self.poutput(f"Job {args.job_id} status: {status}")
+
+    transcribe_status_parser.set_defaults(func=transcribe_status)
+
+    def transcribe_fetch(self, args: Namespace):
+        metadata = None
+        if args.metadata:
+            metadata_path = Path(args.metadata)
+            if metadata_path.exists():
+                metadata = json.loads(metadata_path.read_text())
+            else:
+                self.poutput(f"Metadata file not found: {metadata_path}")
+                return
+
+        try:
+            transcript_path = asyncio.run(
+                self.app.fetch_transcript(args.job_id, metadata=metadata)
+            )
+            self.poutput(f"Transcript saved to {transcript_path}")
+        except ValueError as e:
+            self.poutput(f"Error: {e}")
+        except Exception as e:
+            self.poutput(f"Error fetching transcript: {e}")
+
+    transcribe_fetch_parser.set_defaults(func=transcribe_fetch)
+
+    @cmd2.with_argparser(transcribe_parser)
+    def do_transcribe(self, args: Namespace):
+        """
+
+        Transcribe command help
+
+        """
+
+        if hasattr(args, "func"):
+            args.func(self, args)
+
+        else:
+            self.do_help("transcribe")
 
 
 def main(argv=None):

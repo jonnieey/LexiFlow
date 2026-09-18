@@ -688,3 +688,123 @@ def test_do_invoice_prompt_client(cli_app, mock_transcriptor):
     with patch("lexiflow.cli.prompt", return_value="1"):
         cli_app.onecmd("invoice -w id=1")
         mock_transcriptor.return_value.get_invoice_jobs.assert_called()
+
+
+# -------- transcribe submit/status/fetch --------
+
+
+def test_do_transcribe_submit(cli_app, mock_transcriptor):
+    mock_transcriptor.return_value.submit_transcription.return_value = (
+        "ext-123"
+    )
+    cli_app.poutput = MagicMock()
+
+    cli_app.onecmd("transcribe submit -j 5 -P revai")
+
+    mock_transcriptor.return_value.submit_transcription.assert_called_once_with(
+        5, "revai", additional_vocabulary=None
+    )
+    cli_app.poutput.assert_called_with(
+        "Submitted job 5 to revai: ext-123"
+    )
+
+
+def test_do_transcribe_submit_with_vocabulary(cli_app, mock_transcriptor):
+    mock_transcriptor.return_value.submit_transcription.return_value = "ext-1"
+
+    cli_app.onecmd(
+        "transcribe submit -j 5 -P speechmatics --vocabulary 'Plaintiff, Defendant'"
+    )
+
+    mock_transcriptor.return_value.submit_transcription.assert_called_once_with(
+        5, "speechmatics", additional_vocabulary=["Plaintiff", "Defendant"]
+    )
+
+
+def test_do_transcribe_submit_error(cli_app, mock_transcriptor):
+    mock_transcriptor.return_value.submit_transcription.side_effect = (
+        FileNotFoundError("Job file not found: /tmp/x.mp3")
+    )
+    cli_app.poutput = MagicMock()
+
+    cli_app.onecmd("transcribe submit -j 5 -P revai")
+
+    cli_app.poutput.assert_called_with(
+        "Error: Job file not found: /tmp/x.mp3"
+    )
+
+
+def test_do_transcribe_status(cli_app, mock_transcriptor):
+    mock_transcriptor.return_value.poll_transcription_status.return_value = (
+        "transcribed"
+    )
+    cli_app.poutput = MagicMock()
+
+    cli_app.onecmd("transcribe status -j 5")
+
+    mock_transcriptor.return_value.poll_transcription_status.assert_called_once_with(
+        5
+    )
+    cli_app.poutput.assert_called_with("Job 5 status: transcribed")
+
+
+def test_do_transcribe_status_none(cli_app, mock_transcriptor):
+    mock_transcriptor.return_value.poll_transcription_status.return_value = (
+        None
+    )
+    cli_app.poutput = MagicMock()
+
+    cli_app.onecmd("transcribe status -j 5")
+
+    cli_app.poutput.assert_called_with(
+        "Job 5 has no transcription in progress, "
+        "or the provider poll failed."
+    )
+
+
+def test_do_transcribe_fetch(cli_app, mock_transcriptor, tmp_path):
+    transcript_path = tmp_path / "TX001_transcript.txt"
+    mock_transcriptor.return_value.fetch_transcript.return_value = (
+        transcript_path
+    )
+    cli_app.poutput = MagicMock()
+
+    cli_app.onecmd("transcribe fetch -j 5")
+
+    mock_transcriptor.return_value.fetch_transcript.assert_called_once_with(
+        5, metadata=None
+    )
+    cli_app.poutput.assert_called_with(f"Transcript saved to {transcript_path}")
+
+
+def test_do_transcribe_fetch_with_metadata(
+    cli_app, mock_transcriptor, tmp_path
+):
+    metadata_file = tmp_path / "metadata.json"
+    metadata_file.write_text('{"WITNESS_NAME": "Jane Doe"}')
+    mock_transcriptor.return_value.fetch_transcript.return_value = (
+        tmp_path / "out.txt"
+    )
+
+    cli_app.onecmd(f"transcribe fetch -j 5 -m {metadata_file}")
+
+    mock_transcriptor.return_value.fetch_transcript.assert_called_once_with(
+        5, metadata={"WITNESS_NAME": "Jane Doe"}
+    )
+
+
+def test_do_transcribe_fetch_missing_metadata_file(cli_app, mock_transcriptor):
+    cli_app.poutput = MagicMock()
+
+    cli_app.onecmd("transcribe fetch -j 5 -m /nonexistent/metadata.json")
+
+    cli_app.poutput.assert_called_with(
+        "Metadata file not found: /nonexistent/metadata.json"
+    )
+    mock_transcriptor.return_value.fetch_transcript.assert_not_called()
+
+
+def test_do_transcribe_no_subcommand(cli_app):
+    cli_app.do_help = MagicMock()
+    cli_app.onecmd("transcribe")
+    cli_app.do_help.assert_called_with("transcribe")
