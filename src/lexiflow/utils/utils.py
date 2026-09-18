@@ -40,6 +40,14 @@ from .validators import (
 )
 from .validators import template_mapping as TEMPLATE_MAPPING
 from .validators import template_validator, yes_no_validator
+from .vocabulary import (
+    clean_vocabulary,
+    estimate_token_count,
+    filter_metadata_for_llm,
+    format_metadata_for_prompt,
+    process_metadata_to_vocabulary,
+    tokenize_metadata_value,
+)
 
 
 def get_version():
