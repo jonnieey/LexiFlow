@@ -417,16 +417,6 @@ Button {
     align: center middle;
     margin-top: 1;
 }
-/* Vim Footer */
-#vim-footer {
-    background: $accent;
-    color: $text;
-    text-style: bold;
-    text-align: center;
-    padding: 0 1;
-    dock: bottom;
-    height: 2;
-}
 .selected-row {
     background: $accent 30%;
 }

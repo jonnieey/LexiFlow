@@ -3299,36 +3299,6 @@ class VimHelpScreen(ModalScreen):
         self.dismiss()
 
 
-class VimFooter(Static):
-    """Dynamic footer showing vim key bindings for the active pane."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.vim_mode = False
-        self.bindings: List[tuple[str, str]] = []
-
-    def set_vim_mode(self, enabled: bool):
-        self.vim_mode = enabled
-        self.update_display()
-
-    def set_bindings(self, bindings: List[tuple[str, str]]):
-        self.bindings = bindings
-        self.update_display()
-
-    def update_display(self):
-        if not self.vim_mode:
-            self.update("Vim Mode: Disabled (press 'v' to enable)")
-            return
-
-        if not self.bindings:
-            self.update("Vim Mode: Enabled (no actions available)")
-            return
-
-        # Format as "key: description  |  next key: description"
-        parts = [f"{key}: {desc}" for key, desc in self.bindings]
-        self.update("Vim Mode: " + "  |  ".join(parts))
-
-
 class TranscriptorTUI(App):
     """An application with per-tab and toggleable bindings."""
 
@@ -3375,22 +3345,7 @@ class TranscriptorTUI(App):
                 yield Configuration(
                     id="config-pane", classes="config-container"
                 )
-        yield VimFooter(id="vim-footer")
-
-    def on_mount(self) -> None:
-        footer = self.query_one("#vim-footer", VimFooter)
-        footer.set_vim_mode(True)
-        self.update_vim_footer()
-
-    def update_vim_footer(self):
-        """Refresh footer with current pane's bindings."""
-        footer = self.query_one("#vim-footer", VimFooter)
-        pane = self._get_active_pane()
-        if pane and hasattr(pane, "get_vim_bindings"):
-            bindings = pane.get_vim_bindings()
-            footer.set_bindings(bindings)
-        else:
-            footer.set_bindings([])
+        yield Footer()
 
     def action_show_vim_help(self):
         self.push_screen(VimHelpScreen())
@@ -3454,7 +3409,6 @@ class TranscriptorTUI(App):
         """Refresh and focus the newly activated pane."""
         pane_id = event.pane.id
         self.call_after_refresh(lambda: self._refresh_and_focus_pane(pane_id))
-        self.call_after_refresh(self.update_vim_footer)
 
     def _refresh_and_focus_pane(self, pane_id: str) -> None:
         """Refresh the pane's data and give focus to its main widget."""
