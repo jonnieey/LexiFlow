@@ -1,0 +1,81 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lexiflow"
+description = "Unified transcription job management: CRUD/invoicing (Transcriptor) + external transcription services (LegatoFlow)"
+authors = [{ name = "Jonnieey", email = "johnjahi55@gmail.com" }]
+requires-python = ">=3.9,<3.13" #aifc module dropped in 3.13
+readme = "README.md"
+license = "MIT"
+dynamic = ["version"]
+dependencies = [
+    "audioread~=3.0.0",
+    "cmd2~=2.4.3",
+    "Jinja2~=3.1.2",
+    "markdownify~=0.11.6",
+    "prompt-toolkit~=3.0.36",
+    "python-docx~=0.8.11",
+    "PyYAML~=6.0",
+    "rich~=13.3.1",
+    "sqlalchemy>=2.0.0",
+    "pydantic>= 2.11.0b1",
+    "platformdirs~=4.2.2",
+    "cffi>=1.17.1",
+    "gnureadline>=8.2.13; sys_platform != 'win32'",
+    "pyreadline3>=3.4.1; sys_platform == 'win32'",
+    "textual==6.2.0"
+]
+[project.optional-dependencies]
+    weasyprint = ["weasyprint>=60.0"]
+    playwright = ["playwright>=1.40"]
+    xhtml2pdf = ["xhtml2pdf>=0.2"]
+    all = [ "weasyprint>=60.0", "playwright>=1.40", "xhtml2pdf>=0.2" ]
+[project.scripts]
+lexiflow = "lexiflow.main:main"
+
+[dependency-groups]
+dev = [
+    "black~=22.10.0",
+    "mypy~=0.982",
+    "pytest~=7.2.0",
+    "isort~=5.10.1",
+    "viztracer~=0.15.4",
+    "autoflake~=2.0.0",
+    "cmd2-ext-test~=2.0.0",
+    "sqlalchemy[mypy]>=2.0.0",
+    "types-PyYAML~=6.0.2",
+    "pre-commit~=4.2.0",
+    "pyinstaller>=6.3.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = "tests"
+pythonpath = [".", "src"]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",
+]
+addopts = "-p no:unraisableexception"
+
+[tool.mypy]
+files = ["lexiflow"]
+warn_unused_configs = true
+ignore_missing_imports = true
+python_version = "3.10"
+
+[tool.black]
+line-length = 78
+
+[tool.isort]
+multi_line_output = 3
+force_single_line = false
+balanced_wrapping = true
+include_trailing_comma = true
+
+[tool.mypy-importlib_metadata]
+ignore_missing_imports = true
+
+[tool.hatch.version]
+path = "src/lexiflow/__about__.py"

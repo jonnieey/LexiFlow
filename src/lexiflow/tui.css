@@ -1,0 +1,401 @@
+/* Base element styles */
+Screen {
+    background: $surface;
+}
+VerticalScroll {
+    scrollbar-size: 1 1;
+    scrollbar-color: $panel;
+}
+DataTable {
+    height: 1fr;
+    scrollbar-size: 1 1;
+    scrollbar-color: $panel;
+}
+Button {
+    height: auto;
+}
+Input, Select, TextArea {
+    background: $surface;
+    color: $text;
+    border: solid $panel;
+}
+Input:focus, Select:focus, TextArea:focus {
+    border: solid $accent;
+}
+
+/* Common classes */
+.preview-title, .edit-title, .config-title {
+    text-style: bold;
+    color: $accent;
+    text-align: center;
+    margin: 1;
+}
+.dashboard-container, .profile-container, .clients-container,
+.rates-container, .config-container, .invoicing-container {
+    padding: 1;
+    border: solid $accent;
+}
+
+Button {
+    height: auto;
+    padding: 0 1;        /* no vertical padding, only left/right */
+}
+
+.panel-controls {
+    dock: bottom;
+    height: auto;
+    width: 100%;
+    padding: 0 1;         /* top/bottom padding removed */
+    margin: 0;
+}
+.button-bar {
+    height: 2;
+    align: right top;
+    padding: 0 1;                   /* no extra padding */
+}
+
+.button-bar > Button {
+    margin: 1;
+    min-width: 18;
+    border: none;
+    height: auto;
+    background: orange;
+    color: $text;
+}
+.summary-title {
+    text-style: bold;
+    color: $accent;
+    margin-top: 2;
+    margin-bottom: 1;
+}
+.summary-item {
+    margin-left: 2;
+    margin-bottom: 1;
+}
+.restore-title, .purge-title, .about-title, .add-cutoffs-title {
+    text-align: center;
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+.restore-label, .purge-label, .about-text {
+    margin-bottom: 1;
+}
+.context-title {
+    text-align: center;
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+    border-bottom: solid $accent;
+}
+.title {
+    text-style: bold;
+    color: $accent;
+    margin: 1;
+}
+.form-row {
+    height: auto;
+    margin: 1 0;
+    align: left top;
+}
+.form-row > Label {
+    width: 16;
+    text-align: left;
+    color: $accent;
+}
+.form-row > Input,
+.form-row > Select {
+    width: 1fr;
+}
+.two-col > Label {
+    width: 12;
+}
+.two-col > Input,
+.two-col > Select {
+    width: 1fr;
+}
+
+/* Table zebra striping */
+#pending-jobs-table .datatable--even-row { background: $panel; }
+#pending-jobs-table .datatable--odd-row  { background: $surface; }
+#jobs-data-table .datatable--even-row { background: $panel; }
+#jobs-data-table .datatable--odd-row  { background: $surface; }
+#clients-table .datatable--even-row { background: $panel; }
+#clients-table .datatable--odd-row  { background: $surface; }
+#rates-table .datatable--even-row { background: $panel; }
+#rates-table .datatable--odd-row  { background: $surface; }
+#invoice-cutoffs-table .datatable--even-row { background: $panel; }
+#invoice-cutoffs-table .datatable--odd-row  { background: $surface; }
+
+/* Modal screens */
+#invoice-preview, #job-edit, #config-edit,
+#client-edit, #rate-edit, #profile-edit, #context-menu {
+    width: 90%;
+    height: 90%;
+    border: double $accent;
+    background: $surface;
+}
+#client-edit, #rate-edit, #profile-edit, #context-menu {
+    width: 60%;
+    height: auto;
+    align: center middle;
+}
+#invoice-preview {
+    width: 90%;
+    height: 90%;
+}
+#job-edit {
+    width: 1fr;
+    height: 1fr;
+    padding: 1;
+}
+#config-edit {
+    width: 90%;
+    height: 90%;
+}
+#invoice-markdown {
+    height: 1fr;
+    border: solid $panel;
+    margin: 1;
+    padding: 1;
+    background: $panel;
+}
+#preview-buttons, #edit-buttons {
+    height: auto;
+    align: right top;
+}
+#edit-buttons {
+    background: $panel;
+    align: center bottom;
+    width: 1fr;
+    height: auto;
+    dock: bottom;
+}
+#edit-buttons > Button {
+    margin: 0 2;
+    min-width: 20%;
+}
+#profile-display {
+    margin: 1;
+    padding: 1;
+    border: solid $panel;
+    background: $panel;
+}
+#config-display {
+    margin: 1;
+    padding: 1;
+    border: solid $panel;
+    background: $panel;
+}
+#job-form-container {
+    height: 80%;
+    border: solid $panel;
+    margin: 1;
+    padding: 1;
+}
+#job-form-container > Vertical {
+    height: auto;
+}
+#add-job-screen {
+    width: 100%;
+    height: 100%;
+    border: double $accent;
+    background: $surface;
+    padding: 1;
+    layout: vertical;
+}
+#add-job-step-info {
+    background: $panel;
+    text-align: center;
+    text-style: bold;
+    border-bottom: solid $accent;
+}
+#add-job-form {
+    height: 1fr;
+    border: double $accent;
+    margin: 1;
+    padding: 1;
+    overflow-y: auto;
+}
+#add-job-form Input,
+#add-job-form Select,
+#add-job-form TextArea,
+#add-job-form Checkbox {
+    margin-bottom: 1;
+    width: 100%;
+    height: auto;
+}
+#add-job-form Label {
+    margin-top: 1;
+    margin-bottom: 0;
+    color: cyan;
+}
+#add-job-buttons {
+    background: $panel;
+    align: center bottom;
+    width: 1fr;
+    height: auto;
+    dock: bottom;
+}
+#add-job-buttons > Button {
+    margin: 0 2;
+    min-width: 20%;
+}
+#confirm-delete {
+    background: $error;
+}
+#confirm-delete:hover {
+    background: $error-darken-1;
+}
+#restore-screen, #purge-screen, #about-screen, #add-cutoffs {
+    width: 60%;
+    height: auto;
+    border: double $accent;
+    background: $surface;
+    padding: 1;
+    align: center middle;
+}
+#restore-buttons, #purge-buttons, #about-buttons, #add-cutoffs-buttons {
+    margin-top: 1;
+    align: center middle;
+    width: 100%;
+}
+#restore-buttons > Button,
+#purge-buttons > Button,
+#about-buttons > Button,
+#add-cutoffs-buttons > Button {
+    margin: 0 1;
+}
+#add-cutoffs-form-container {
+    height: auto;
+    max-height: 70%;
+    margin-bottom: 1;
+}
+#client-form-container, #rate-form-container, #profile-form-container {
+    height: auto;
+    max-height: 80%;
+    margin-bottom: 1;
+}
+#action-list {
+    margin: 1;
+    height: auto;
+}
+#invoice-main-layout {
+    height: 1fr;
+}
+#invoice-input-pane {
+    width: 3fr;
+    height: 1fr;
+    padding: 1;
+}
+#invoice-controls {
+    height: auto;
+    background: $panel;
+    padding: 1;
+    margin-bottom: 1;
+}
+#invoice-form-container {
+    background: $surface;
+    padding: 1;
+    margin: 1 0;
+}
+#invoice-results {
+    height: auto;
+    border: solid $panel;
+    background: $surface;
+    padding: 1;
+}
+#invoice-jobs-table {
+    height: 1fr;
+    margin: 1 0;
+    min-height: 4;
+}
+#invoice-cutoffs-container {
+    width: 1fr;
+    padding: 1;
+    border-left: solid $panel;
+    background: $surface;
+}
+#invoice-cutoffs-container .title {
+    text-style: bold;
+    color: $accent;
+    text-align: center;
+    padding-bottom: 1;
+    border-bottom: solid $accent;
+}
+#invoice-cutoffs-table {
+    height: 1fr;
+    margin-top: 1;
+}
+#invoice-preview {
+    width: 90%;
+    height: 90%;
+    border: double $accent;
+    background: $surface;
+    layout: vertical;
+    padding: 1;
+}
+
+#invoice-preview > .preview-title {
+    text-style: bold;
+    color: $accent;
+    text-align: center;
+    margin-bottom: 1;
+    height: auto;
+}
+
+#invoice-markdown {
+    height: 1fr;
+    border: solid $panel;
+    margin: 1;
+    padding: 1;
+    background: $panel;
+    overflow-y: auto;
+}
+
+#preview-buttons {
+    height: auto;
+    align: right top;
+    margin-top: 1;
+}
+#vim-help {
+    width: 80%;
+    height: 80%;
+    border: double $accent;
+    background: $surface;
+    padding: 1;
+    layout: vertical;
+}
+.help-title {
+    text-style: bold;
+    color: $accent;
+    text-align: center;
+    margin-bottom: 1;
+    height: auto;
+}
+#help-content {
+    height: 1fr;
+    border: solid $panel;
+    margin: 1;
+    padding: 1;
+    background: $panel;
+    overflow-y: auto;
+}
+#help-buttons {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+/* Vim Footer */
+#vim-footer {
+    background: $accent;
+    color: $text;
+    text-style: bold;
+    text-align: center;
+    padding: 0 1;
+    dock: bottom;
+    height: 2;
+}
+.selected-row {
+    background: $accent 30%;
+}

@@ -1,0 +1,1379 @@
+# type: ignore
+import os
+import sys
+from argparse import Namespace
+from datetime import datetime
+from typing import Optional
+
+import cmd2
+from prompt_toolkit import prompt
+from prompt_toolkit.styles import Style
+
+from lexiflow.base import Transcriptor
+from lexiflow.input_handler import CLIInputHandler
+from lexiflow.pdf import PDFRenderer
+from lexiflow.utils import (
+    invoice_template_themes,
+    parse_conditions,
+    parse_conditions_as_dict,
+    positive_number_validator,
+    yes_no_validator,
+)
+from lexiflow.utils.docx_utils import generate_cutoff_list_from_docx
+from lexiflow.view import TranscriptorView
+
+style = Style.from_dict(
+    {
+        "": "#FFA500 bg:#2A2B3C",
+        "space": "bg:#2A2B3C",
+        "prompt": "#8BE9FD bg:#2A2B3C",
+    }
+)
+
+base_parser = cmd2.Cmd2ArgumentParser(description="Transcriptor CLI")
+base_subparsers = base_parser.add_subparsers(
+    title="subcommands", help="subcommand help"
+)
+
+show_parser = base_subparsers.add_parser("show", help="show object")
+show_subparsers = show_parser.add_subparsers(
+    title="subcommands", help="subcommand help"
+)
+show_config_parser = show_subparsers.add_parser("config", help="show config")
+show_profile_parser = show_subparsers.add_parser(
+    "profile", help="show profile"
+)
+show_clients_parser = show_subparsers.add_parser(
+    "clients", help="show client"
+)
+show_rates_parser = show_subparsers.add_parser("rates", help="show rates")
+show_jobs_parser = show_subparsers.add_parser("jobs", help="show jobs")
+show_cutoffs_parser = show_subparsers.add_parser(
+    "cutoffs", help="show cutoffs"
+)
+show_cutoffs_parser.add_argument("-y", "--year", help="Year for cutoffs")
+show_version_parser = show_subparsers.add_parser(
+    "version", help="show version"
+)
+show_pdf_backends_parser = show_subparsers.add_parser(
+    "pdf_backends", help="show available PDF backends"
+)
+
+show_jobs_parser.add_argument(
+    "-a", "--all", action="store_true", help="show all jobs"
+)
+
+
+def add_query_arguments(parser):
+    parser.add_argument(
+        "-w",
+        "--where",
+        action="append",
+        help='Specify conditions in the format "field[operator]value", e.g., -w id<=1 -w amount>0',
+    )
+    parser.add_argument(
+        "-r",
+        "--raw",
+        help="Raw sql query",
+    )
+
+
+add_query_arguments(show_clients_parser)
+add_query_arguments(show_rates_parser)
+add_query_arguments(show_jobs_parser)
+
+
+add_parser = base_subparsers.add_parser("add", help="add object")
+add_subparsers = add_parser.add_subparsers(
+    title="subcommands", help="subcommand help"
+)
+add_client_parser = add_subparsers.add_parser("client", help="add client")
+add_client_parser.add_argument(
+    "-n",
+    "--name",
+    type=str,
+    help="client name",
+)
+add_client_parser.add_argument(
+    "-e",
+    "--email",
+    type=str,
+    help="client email",
+)
+
+add_job_parser = add_subparsers.add_parser("job", help="add job")
+
+add_job_parser.add_argument(
+    "-f",
+    "--file",
+    type=str,
+    help="Job File Path",
+)
+add_job_parser.add_argument("-c", "--client_id", type=int, help="Client ID")
+add_job_parser.add_argument("-j", "--job_number", help="Job Number")
+add_job_parser.add_argument("-r", "--date_received", help="Date Received")
+add_job_parser.add_argument("-d", "--date_due", help="Date Due")
+add_job_parser.add_argument("-q", "--quantity", help="Quantity")
+add_job_parser.add_argument("-w", "--work_on_file", help="Work On File")
+add_job_parser.add_argument("-t", "--job_type", help="Job Type")
+add_job_parser.add_argument("-T", "--job_template", help="Job Template")
+add_job_parser.add_argument("-N", "--note", help="Job Note")
+
+
+add_cutoffs_parser = add_subparsers.add_parser(
+    "cutoffs", help="generate cutoffs file from docx"
+)
+add_cutoffs_parser.add_argument(
+    "-f",
+    "--file",
+    type=str,
+    help="Cutoffs docx File Path",
+)
+add_cutoffs_parser.add_argument("-d", "--date_fmt", help="Date Format")
+add_cutoffs_parser.add_argument("-y", "--year", help="Year for cutoffs")
+
+
+update_parser = base_subparsers.add_parser("update", help="update object")
+update_subparsers = update_parser.add_subparsers(
+    title="subcommands", help="subcommand help"
+)
+update_config_parser = update_subparsers.add_parser(
+    "config", help="update config"
+)
+
+update_config_parser.add_argument("-b", "--base-dir", help="base directory")
+update_config_parser.add_argument("-d", "--date-format", help="date format")
+update_config_parser.add_argument(
+    "-c", "--display-currency", help="table display currency (e.g. KES)"
+)
+update_config_parser.add_argument(
+    "-i", "--invoice-currency", help="invoice generation currency"
+)
+update_config_parser.add_argument(
+    "-r", "--conversion-rate", type=float, help="manual conversion rate"
+)
+update_config_parser.add_argument(
+    "-s", "--currency-segment", help="sendwave segmentName"
+)
+update_config_parser.add_argument(
+    "--currency-receive-country", help="sendwave receiveCountryIso2"
+)
+update_config_parser.add_argument(
+    "--currency-send-country", help="sendwave sendCountryIso2"
+)
+
+update_profile_parser = update_subparsers.add_parser(
+    "profile", help="update profile"
+)
+update_profile_parser.add_argument("-n", "--name", help="name")
+update_profile_parser.add_argument("-a", "--area", help="area")
+
+update_profile_parser.add_argument("-c", "--country", help="country")
+
+
+def add_update_delete_query_arguments(parser):
+    parser.add_argument(
+        "-r",
+        "--raw",
+        help="Raw sql query",
+    )
+    parser.add_argument(
+        "-w",
+        "--where",
+        action="append",
+        help='Specify conditions in the format "field[operator]value", e.g., -w id<=1 -w amount>0',
+    )
+    parser.add_argument(
+        "-v",
+        "--values",
+        action="append",
+        help='Specify values in the format "field=value", e.g., -v id=1 -v amount=100',
+    )
+
+
+update_client_parser = update_subparsers.add_parser(
+    "client", help="update client"
+)
+add_update_delete_query_arguments(update_client_parser)
+
+update_rates_parser = update_subparsers.add_parser(
+    "rates", help="update rates"
+)
+add_update_delete_query_arguments(update_rates_parser)
+
+update_jobs_parser = update_subparsers.add_parser("jobs", help="update job")
+add_update_delete_query_arguments(update_jobs_parser)
+update_jobs_parser.add_argument(
+    "-T", "--table", action="store_true", help="Print cutoffs table"
+)
+update_jobs_parser.add_argument(
+    "-c", "--client_id", type=int, help="Client ID"
+)
+update_jobs_parser.add_argument("-y", "--year", help="Year for cutoffs")
+update_jobs_parser.add_argument(
+    "-a",
+    "--add-jobs",
+    help="Additional job numbers to update, comma-separated (e.g. '923999,923876')",
+)
+
+delete_parser = base_subparsers.add_parser("delete", help="delete object")
+delete_subparsers = delete_parser.add_subparsers(
+    title="subcommands", help="subcommand help"
+)
+delete_client_parser = delete_subparsers.add_parser(
+    "clients", help="delete client"
+)
+add_update_delete_query_arguments(delete_client_parser)
+delete_client_parser.add_argument(
+    "-P", "--purge", action="store_true", help="Purge client data"
+)
+delete_client_parser.add_argument(
+    "-N",
+    "--no-confirm",
+    action="store_true",
+    help="Delete without confirmation",
+)
+
+delete_jobs_parser = delete_subparsers.add_parser("jobs", help="delete job")
+add_update_delete_query_arguments(delete_jobs_parser)
+delete_jobs_parser.add_argument(
+    "-P", "--purge", action="store_true", help="Purge job data"
+)
+delete_jobs_parser.add_argument(
+    "-N",
+    "--no-confirm",
+    action="store_true",
+    help="Delete without confirmation",
+)
+
+invoice_parser = base_subparsers.add_parser(
+    "invoice", help="generate invoice"
+)
+invoice_parser.add_argument("-c", "--client_id", help="Client ID")
+invoice_parser.add_argument(
+    "-w",
+    "--where",
+    action="append",
+    help='Specify conditions in the format "field[operator]value", e.g., -w id<=1 -w amount>0',
+)
+invoice_parser.add_argument("-r", "--raw", help="Raw sql query")
+invoice_parser.add_argument(
+    "-p", "--print", action="store_true", help="Print invoice"
+)
+invoice_parser.add_argument(
+    "-T", "--table", action="store_true", help="Print cutoffs table"
+)
+invoice_parser.add_argument(
+    "-S",
+    "--summary",
+    action="store_true",
+    help="Print annual summary invoice",
+)
+invoice_parser.add_argument(
+    "-l", "--previous_year_cutoff", help="Previous year last cutoff"
+)
+invoice_parser.add_argument("-y", "--year", help="Year of cutoff")
+invoice_parser.add_argument(
+    "-t",
+    "--invoice_template",
+    help="Select invoice template",
+    default=None,
+    choices=invoice_template_themes(),
+)
+invoice_parser.add_argument(
+    "-m", "--markdown", action="store_true", help="Preview markdown invoice"
+)
+invoice_parser.add_argument(
+    "--csv", action="store_true", help="Generate csv invoice"
+)
+invoice_parser.add_argument(
+    "-a",
+    "--add-jobs",
+    help="Additional job numbers to include, comma-separated (e.g. '923999,923876')",
+)
+
+purge_parser = base_subparsers.add_parser(
+    "purge", help="purge job media files, ex. m4a, mp3, mp4"
+)
+purge_parser.add_argument(
+    "-w",
+    "--where",
+    action="append",
+    help='Specify conditions in the format "field[operator]value", e.g., -w id<=1 -w amount>0',
+)
+purge_parser.add_argument("-r", "--raw", help="Raw sql query")
+
+
+backup_parser = base_subparsers.add_parser("backup", help="backup database")
+restore_parser = base_subparsers.add_parser(
+    "restore", help="restore database"
+)
+
+
+class TranscriptorCMD(cmd2.Cmd):
+    prompt = "(trans5) "
+
+    def __init__(self, app: None = None, history=True, alias=True):
+        self.app = app or Transcriptor()
+
+        history_file = (
+            self.app.base_dir.joinpath(".history") if history else None
+        )
+
+        alias_script = (
+            self.app.CONFIG_DIR.joinpath(".cmd2rc") if alias else None
+        )
+
+        super().__init__(
+            persistent_history_file=history_file,
+            persistent_history_length=500,
+            allow_cli_args=False,
+            startup_script=alias_script,
+            silence_startup_script=True,
+        )
+
+        self.debug = True
+
+        self.add_settable(cmd2.Settable("debug", bool, "debug", self))
+        self._update_prompt()
+        from lexiflow.pdf import PDFRenderer
+
+        available = PDFRenderer.available_backends() + ["auto"]
+        self.add_settable(
+            cmd2.Settable(
+                "pdf_backend",
+                str,
+                "PDF rendering backend",
+                self,
+                choices=available,
+            )
+        )
+
+        self.input_handler = CLIInputHandler(
+            self.app.config, self.show_clients
+        )
+
+    def _update_prompt(self) -> None:
+        """Update the CLI prompt to show current PDF backend."""
+        from lexiflow.pdf import PDFRenderer
+
+        backend = PDFRenderer.get_default_backend()
+        if backend:
+            self.prompt = f"(trans5 [{backend}]) "
+        else:
+            self.prompt = "(trans5 [auto]) "
+
+    @property
+    def pdf_backend(self) -> str:
+        """Get current default PDF backend name."""
+        from lexiflow.pdf import PDFRenderer
+
+        backend = PDFRenderer.get_default_backend()
+        return backend if backend else "auto"
+
+    @pdf_backend.setter
+    def pdf_backend(self, name: str) -> None:
+        """Set default PDF backend and update prompt."""
+        from lexiflow.pdf import PDFRenderer
+
+        if name == "auto":
+            # Clear default backend to allow auto-detection
+            PDFRenderer._default_backend = None
+        else:
+            PDFRenderer.set_default_backend(name)
+        self._update_prompt()
+
+    def do_EOF(self, arg):
+        """
+
+        Exit
+
+        """
+
+        self.poutput("\n** Exiting program, bye **")
+
+        return True
+
+    def do_exit(self, arg):
+        """Exit"""
+
+        self.poutput("\n** Exiting program, bye **")
+
+        return True
+
+    def do_quit(self, arg: str):
+        """Exit"""
+
+        self.poutput("\n** Exiting program, bye **")
+
+        return True
+
+    def emptyline(self):
+        pass
+
+    def do_clear(self, arg):
+        """Clear screen"""
+
+        os.system("cls" if os.name == "nt" else "clear")
+
+    def show_config(self, arg: Namespace):
+        """
+        Show configuration
+        Ex.
+           show config
+        """
+        config = self.app.config
+        TranscriptorView().print_table(config.__dict__, title="Configuration")
+
+    show_config_parser.set_defaults(func=show_config)
+
+    def show_profile(self, arg: Namespace):
+        """
+        Show profile
+        Ex.
+           show profile
+        """
+        if profile := self.app.profile:
+            TranscriptorView().print_table(profile.__dict__, title="Profile")
+
+    show_profile_parser.set_defaults(func=show_profile)
+
+    def show_clients(self, args: Optional[Namespace]):
+        """
+        Show clients
+        Ex.
+           show clients
+        """
+        if args:
+            if args.raw:
+                clients = self.app.api.get_clients(raw_sql_stmt=args.raw)
+            elif args.where:
+                conditions = parse_conditions(args.where)
+                clients = self.app.api.get_clients(conditions=conditions)
+            else:
+                clients = self.app.api.get_clients()
+        else:
+            clients = self.app.api.get_clients()
+        TranscriptorView().print_table(
+            clients, orientation="horizontal", title="Clients"
+        )
+
+    show_clients_parser.set_defaults(func=show_clients)
+
+    def show_rates(self, args: Namespace):
+        if args.raw:
+            rates = self.app.api.get_rates(raw_sql_stmt=args.raw)
+        elif args.where:
+            conditions = parse_conditions(args.where)
+            rates = self.app.api.get_rates(conditions=conditions)
+        else:
+            rates = self.app.api.get_rates()
+        TranscriptorView().print_table(
+            rates,
+            orientation="horizontal",
+            title="Rates",
+            config=self.app.config,
+        )
+
+    show_rates_parser.set_defaults(func=show_rates)
+
+    def show_jobs(self, args: Namespace):
+        if args:
+            if args.raw:
+                jobs = self.app.api.get_jobs(raw_sql_stmt=args.raw)
+            elif args.where:
+                conditions = parse_conditions(args.where)
+                jobs = self.app.api.get_jobs(conditions=conditions)
+            elif args.all:
+                jobs = self.app.api.get_jobs()
+            else:
+                jobs = self.app.api.get_jobs(
+                    conditions={"status": [("=", "Pending")]}
+                )
+
+        TranscriptorView().print_table(
+            jobs,
+            orientation="horizontal",
+            title="Jobs",
+            config=self.app.config,
+        )
+
+    show_jobs_parser.set_defaults(func=show_jobs)
+
+    def show_cutoffs(self, args: Namespace):
+        cutoffs = self.app.load_cutoffs(as_str=True, year=args.year)
+        formatted_cutoffs = [[str(i)] + row for i, row in enumerate(cutoffs)]
+        TranscriptorView().print_table(
+            formatted_cutoffs, orientation="horizontal", title="Cutoffs"
+        )
+
+    show_cutoffs_parser.set_defaults(func=show_cutoffs)
+
+    def show_version(self, args: Namespace):
+        self.poutput(f"Version: {self.app.version}")
+
+    show_version_parser.set_defaults(func=show_version)
+
+    def show_pdf_backends(self, args: Namespace):
+        """Show available PDF backends and current default."""
+        from lexiflow.pdf import PDFRenderer
+
+        available = PDFRenderer.available_backends()
+        current = PDFRenderer.get_default_backend()
+        self.poutput(f"Available PDF backends: {', '.join(available)}")
+        self.poutput(
+            f"Current default backend: {current if current else 'auto (detected)'}"
+        )
+        self.poutput(f"Backend priority: playwright > weasyprint > xhtml2pdf")
+
+    show_pdf_backends_parser.set_defaults(func=show_pdf_backends)
+
+    @cmd2.with_argparser(show_parser)
+    def do_show(self, args: Namespace):
+        """
+
+        Show command help
+
+        """
+
+        if hasattr(args, "func"):
+            args.func(self, args)
+
+        else:
+            self.do_help("show")
+
+    def add_client(self, args: Namespace):
+        client_info = self.input_handler.get_client_info(args)
+
+        if client_info["name"] and client_info["email"]:
+            self.app.create_client(
+                name=client_info["name"], email=client_info["email"]
+            )
+
+        else:
+            self.poutput("Name and email are required.")
+
+    add_client_parser.set_defaults(func=add_client)
+
+    def add_job(self, args: Namespace):
+        job_file_path = self.input_handler.get_job_file_path(args)
+
+        if not job_file_path.exists():
+            self.poutput(f"File not found: {job_file_path}")
+
+            return
+
+        if job_file_path:
+            job_info = self.input_handler.get_job_info(args, job_file_path)
+
+            def task_callback(task_file):
+                return self.input_handler.get_task_info(args, task_file)
+
+            if job_info:
+                self.app.create_job(job_file_path, job_info, task_callback)
+
+            else:
+                self.poutput("Job information could not be collected.")
+
+    add_job_parser.set_defaults(func=add_job)
+
+    def add_cutoffs(self, args: Namespace):
+        docx_path = self.input_handler.get_cutoff_file(args)
+
+        if not docx_path.exists():
+            self.poutput(f"File not found: {docx_path}")
+
+            return
+
+        cutoffs = generate_cutoff_list_from_docx(
+            docx_path=str(docx_path), date_fmt=args.date_fmt
+        )
+
+        self.app.save_cutoffs(cutoffs, year=args.year)
+
+    add_cutoffs_parser.set_defaults(func=add_cutoffs)
+
+    @cmd2.with_argparser(add_parser)
+    def do_add(self, args: Namespace):
+        """
+
+        Add command help
+
+        """
+
+        if hasattr(args, "func"):
+            args.func(self, args)
+
+        else:
+            self.do_help("add")
+
+    def update_config(self, args: Namespace):
+        config = self.app.config
+
+        if args.base_dir:
+            config.base_dir = args.base_dir
+
+        if args.date_format:
+            config.date_format = args.date_format
+
+        if args.display_currency:
+            config.display_currency = args.display_currency
+
+        if args.invoice_currency:
+            config.invoice_currency = args.invoice_currency
+
+        if args.conversion_rate is not None:
+            config.conversion_rate = args.conversion_rate
+
+        if args.currency_segment:
+            config.currency_segment = args.currency_segment
+
+        if args.currency_receive_country:
+            config.currency_receive_country = args.currency_receive_country
+
+        if args.currency_send_country:
+            config.currency_send_country = args.currency_send_country
+
+        self.app.config = config
+
+        self.app.save_config()
+
+    update_config_parser.set_defaults(func=update_config)
+
+    def update_profile(self, args: Namespace):
+        profile = self.app.profile
+
+        if args.name:
+            profile.name = args.name
+
+        if args.area:
+            profile.area = args.area
+
+        if args.country:
+            profile.country = args.country
+
+        self.app.profile = profile
+
+        self.app.save_profile()
+
+    update_profile_parser.set_defaults(func=update_profile)
+
+    def update_clients(self, args: Namespace):
+        if args.raw:
+            self.app.api.update("clients", raw_sql_stmt=args.raw)
+
+        if args.where and args.values:
+            where = parse_conditions(args.where)
+
+            values = parse_conditions_as_dict(args.values)
+
+            self.app.api.update_clients(conditions=where, values=values)
+
+        else:
+            self.poutput("Please provide conditions and values")
+
+            return
+
+    update_client_parser.set_defaults(func=update_clients)
+
+    def update_rates(self, args: Namespace):
+        if args.raw:
+            self.app.api.update_rates(raw_sql_stmt=args.raw)
+
+            return
+
+        if args.where and args.values:
+            where = parse_conditions(args.where)
+
+            values = parse_conditions_as_dict(args.values)
+
+            self.app.api.update_rates(conditions=where, values=values)
+
+            return
+
+        else:
+            self.poutput("Please provide conditions and values")
+
+            return
+
+    update_rates_parser.set_defaults(func=update_rates)
+
+    def update_job(self, args: Namespace):
+        if args.table:
+            if not args.client_id:
+                self.show_clients(args=None)
+
+                message = [
+                    ("class:prompt", "Enter client id:"),
+                    ("class:space", "  "),
+                ]
+
+                client_id = int(
+                    prompt(
+                        message,
+                        style=style,
+                        validator=positive_number_validator,
+                    )
+                )
+
+                args.client_id = client_id  # Update the original args
+
+            if not args.values:
+                self.poutput("Please provide values to be updated.")
+
+                return
+
+            cutoffs = self.app.load_cutoffs(as_str=True, year=args.year)
+
+            cutoffs = [
+                ["index" if row == 0 else str(idx)] + row
+                for idx, row in enumerate(cutoffs)
+            ]
+
+            TranscriptorView().print_table(cutoffs, orientation="horizontal")
+
+            message = [
+                ("class:prompt", "select deposit date. Use index number:"),
+                ("class:space", "  "),
+            ]
+
+            cutoff_idx = prompt(
+                message,
+                style=style,
+                validator=positive_number_validator,
+            )
+
+            previous_cutoff, cutoff = self.app.select_cutoff_period(
+                int(cutoff_idx)
+            )
+
+            raw_cutoff_condition = f""" date_submitted > '{previous_cutoff}'
+
+                  AND date_submitted <= '{cutoff}' AND client_id = {args.client_id}
+
+                  """
+
+            cutoff_condition = [
+                f"date_submitted>{previous_cutoff}",
+                f"date_submitted<={cutoff}",
+                f"client_id={args.client_id}",
+            ]
+
+        if args.raw:
+            if args.table:
+                args.raw = args.raw + f" AND {raw_cutoff_condition}"
+
+            self.app.update_jobs(raw_sql_stmt=args.raw)
+
+        elif args.where and args.values:
+            if args.table:
+                args.where = args.where + cutoff_condition
+
+            where = parse_conditions(args.where)
+
+            values = parse_conditions_as_dict(args.values)
+
+            if "date_submitted" in values:
+                jobs = self.app.api.get_jobs(conditions=where)
+
+                if jobs:
+                    for job in jobs:
+                        date_received = datetime.strptime(
+                            job["date_received"], self.app.config.date_format
+                        ).date()
+
+                        date_submitted = datetime.strptime(
+                            values["date_submitted"],
+                            self.app.config.date_format,
+                        ).date()
+
+                        if date_submitted < date_received:
+                            self.poutput(
+                                "Error: Date submitted cannot be earlier than date received."
+                            )
+
+                            return
+
+            self.app.update_jobs(conditions=where, values=values)
+
+            if args.add_jobs and args.client_id:
+                extra_numbers = [
+                    n.strip() for n in args.add_jobs.split(",") if n.strip()
+                ]
+                for job_number in extra_numbers:
+                    extra_cond = {
+                        "job_number": [("=", job_number)],
+                        "client_id": [("=", args.client_id)],
+                    }
+                    if "date_submitted" in values:
+                        extra_job_list = self.app.api.get_jobs(
+                            conditions=extra_cond
+                        )
+                        if extra_job_list:
+                            for job in extra_job_list:
+                                date_received = datetime.strptime(
+                                    job["date_received"],
+                                    self.app.config.date_format,
+                                ).date()
+                                date_submitted = datetime.strptime(
+                                    values["date_submitted"],
+                                    self.app.config.date_format,
+                                ).date()
+                                if date_submitted < date_received:
+                                    self.poutput(
+                                        f"Error: date_submitted before date_received for job {job_number}."
+                                    )
+                                    return
+                    self.app.update_jobs(conditions=extra_cond, values=values)
+
+        else:
+            if args.table:
+                conditions = parse_conditions(cutoff_condition)
+
+                values = parse_conditions_as_dict(args.values)
+
+                self.app.update_jobs(conditions=conditions, values=values)
+
+                if args.add_jobs:
+                    extra_numbers = [
+                        n.strip()
+                        for n in args.add_jobs.split(",")
+                        if n.strip()
+                    ]
+                    for job_number in extra_numbers:
+                        extra_cond = {
+                            "job_number": [("=", job_number)],
+                            "client_id": [("=", args.client_id)],
+                        }
+                        if "date_submitted" in values:
+                            extra_job_list = self.app.api.get_jobs(
+                                conditions=extra_cond
+                            )
+                            if extra_job_list:
+                                for job in extra_job_list:
+                                    date_received = datetime.strptime(
+                                        job["date_received"],
+                                        self.app.config.date_format,
+                                    ).date()
+                                    date_submitted = datetime.strptime(
+                                        values["date_submitted"],
+                                        self.app.config.date_format,
+                                    ).date()
+                                    if date_submitted < date_received:
+                                        self.poutput(
+                                            f"Error: date_submitted before date_received for job {job_number}."
+                                        )
+                                        return
+                        self.app.update_jobs(
+                            conditions=extra_cond, values=values
+                        )
+
+            else:
+                self.poutput("Please provide conditions and values")
+
+            return
+
+    update_jobs_parser.set_defaults(func=update_job)
+
+    @cmd2.with_argparser(update_parser)
+    def do_update(self, args: Namespace):
+        """
+
+        Update command help
+
+        """
+
+        if hasattr(args, "func"):
+            args.func(self, args)
+
+        else:
+            self.do_help("update")
+
+    def delete_clients(self, args: Namespace):
+        clients = None
+
+        if not args.where and not args.raw:
+            self.poutput("Please provide conditions to delete")
+
+            return
+
+        if args.raw:
+            clients = self.app.api.get_clients(raw_sql_stmt=args.raw)
+
+        elif args.where:
+            conditions = parse_conditions(args.where)
+
+            clients = self.app.api.get_clients(conditions=conditions)
+
+        if not clients:
+            self.poutput("No clients found")
+
+            return
+
+        if args.no_confirm:
+            if args.purge:
+                self.poutput(
+                    "\n** DELETING CLIENTS WILL DELETE ALL CLIENT DATA (NO CONFIRMATION)**\n"
+                )
+
+            message = [
+                (
+                    "class:prompt",
+                    "Are you sure you want to delete clients (NO CONFIRMATION)? (y/n):",
+                ),
+                ("class:space", "  "),
+            ]
+
+            to_delete = prompt(
+                message,
+                style=style,
+                validator=yes_no_validator,
+            )
+
+            if to_delete.lower().startswith("y"):
+                self.app.delete_clients(
+                    conditions=conditions,
+                    raw_sql_stmt=args.raw,
+                    purge=args.purge,
+                )
+
+        else:
+            for client in clients:
+                client_name = client["name"]
+
+                message = [
+                    (
+                        "class:prompt",
+                        f"Are you sure you want to delete {client_name}? (y/n):",
+                    ),
+                    ("class:space", "  "),
+                ]
+
+                to_delete = prompt(
+                    message,
+                    style=style,
+                    validator=yes_no_validator,
+                )
+
+                if to_delete.lower().startswith("y"):
+                    self.poutput(
+                        "\n** DELETING CLIENT WILL DELETE CLIENT'S JOBS AND RATES **\n"
+                    )
+
+                    if args.purge:
+                        self.poutput(
+                            "\n** DELETING CLIENT WILL DELETE ALL CLIENT DATA**\n"
+                        )
+
+                    message = [
+                        ("class:prompt", f"Type {client_name} to confirm:"),
+                        ("class:space", "  "),
+                    ]
+
+                    confirm_delete = prompt(message, style=style)
+
+                    if confirm_delete == client_name:
+                        self.app.delete_clients(
+                            conditions={"name": [("=", client_name)]},
+                            purge=args.purge,
+                        )
+
+                    else:
+                        self.poutput("Operation aborted")
+
+                        return
+
+    delete_client_parser.set_defaults(func=delete_clients)
+
+    def delete_jobs(self, args: Namespace):
+        jobs = None
+        conditions = None
+
+        if args.raw:
+            jobs = self.app.api.get_jobs(raw_sql_stmt=args.raw)
+
+        if not args.where and not args.raw:
+            self.poutput("Please provide conditions to delete")
+
+            return
+
+        elif args.where:
+            conditions = parse_conditions(args.where)
+
+            jobs = self.app.api.get_jobs(conditions=conditions)
+
+        if not jobs:
+            self.poutput("No jobs found")
+
+            return
+
+        if args.no_confirm:
+            if args.purge:
+                self.poutput(
+                    "\n** DELETING CLIENTS WILL DELETE ALL CLIENT DATA (NO CONFIRMATION)**\n"
+                )
+
+            message = [
+                (
+                    "class:prompt",
+                    "Are you sure you want to delete jobs (NO CONFIRMATION)? (y/n):",
+                ),
+                ("class:space", "  "),
+            ]
+
+            confirm_delete = prompt(
+                message,
+                style=style,
+                validator=yes_no_validator,
+            )
+
+            if confirm_delete.lower().startswith("y"):
+                self.app.delete_jobs(
+                    conditions=conditions,
+                    raw_sql_stmt=args.raw,
+                    purge=args.purge,
+                )
+
+        else:
+            for job in jobs:
+                message = [
+                    (
+                        "class:prompt",
+                        f"Are you sure you want to delete {job['job_number']}? (y/n):",
+                    ),
+                    ("class:space", "  "),
+                ]
+
+                confirm_delete = prompt(
+                    message,
+                    style=style,
+                    validator=yes_no_validator,
+                )
+
+                if confirm_delete.lower().startswith("y"):
+                    self.app.delete_jobs(
+                        conditions=conditions,
+                        raw_sql_stmt=args.raw,
+                        purge=args.purge,
+                    )
+
+                else:
+                    self.poutput("Operation aborted")
+
+                    return
+
+    delete_jobs_parser.set_defaults(func=delete_jobs)
+
+    @cmd2.with_argparser(delete_parser)
+    def do_delete(self, args: Namespace):
+        """
+
+        Delete command help
+
+        """
+
+        if hasattr(args, "func"):
+            args.func(self, args)
+
+        else:
+            self.do_help("delete")
+
+    def invoice(self, args: Namespace):
+        if not any([args.raw, args.table, args.where, args.summary]):
+            error = """Conditions must be provided or summary flag must be set.
+
+    Ex. invoice -w 'date_submitted > \"2025-01-01\" -w date_submitted <= \"2025-01-31\"
+
+            """
+
+            self.poutput(error)
+
+            self.do_help("invoice")
+
+            return
+
+        if not args.client_id:
+            self.show_clients(args=None)
+
+            message = [
+                ("class:prompt", "Enter client id:"),
+                ("class:space", "  "),
+            ]
+
+            client_id = int(
+                prompt(
+                    message, style=style, validator=positive_number_validator
+                )
+            )
+
+            args.client_id = client_id  # Update the original args
+
+        client_name = ""
+        if args.summary:
+            invoice_jobs_dict = self.app.get_summary_invoice_jobs(
+                client_id=args.client_id,
+                previous_year_cutoff=args.previous_year_cutoff,
+                year=args.year,
+            )
+
+            if not invoice_jobs_dict:
+                self.poutput("No jobs found for summary.")
+                return
+
+            html, client_name = self.app.generate_summary_invoice(
+                invoice_jobs_dict
+            )
+            invoice_jobs = invoice_jobs_dict[client_name]
+
+        if args.table:
+            cutoffs = self.app.load_cutoffs(as_str=True, year=args.year)
+
+            cutoffs = [
+                ["index" if row == 0 else str(idx)] + row
+                for idx, row in enumerate(cutoffs)
+            ]
+
+            TranscriptorView().print_table(cutoffs, orientation="horizontal")
+
+            message = [
+                ("class:prompt", "select deposit date. Use index number:"),
+                ("class:space", "  "),
+            ]
+
+            cutoff_idx = prompt(
+                message,
+                style=style,
+                validator=positive_number_validator,
+            )
+
+            previous_cutoff, cutoff = self.app.select_cutoff_period(
+                int(cutoff_idx)
+            )
+
+            raw_cutoff_condition = f""" date_submitted > '{previous_cutoff}'
+
+                  AND date_submitted <= '{cutoff}'
+
+                  """
+
+            cutoff_condition = [
+                f"date_submitted>{previous_cutoff}",
+                f"date_submitted<={cutoff}",
+            ]
+
+        if args.raw:
+            if args.table:
+                args.raw = args.raw + f" AND {raw_cutoff_condition}"
+
+            invoice_jobs = self.app.get_invoice_jobs(
+                client_id=args.client_id,
+                raw_sql_stmt=args.raw,
+            )
+
+            html, client_name = self.app.generate_invoice(
+                invoice_jobs,
+                invoice_theme=args.invoice_template,
+            )
+
+        elif args.where:
+            if args.table:
+                args.where = args.where + cutoff_condition
+
+            conditions = parse_conditions(args.where)
+
+            invoice_jobs = self.app.get_invoice_jobs(
+                client_id=args.client_id,
+                conditions=conditions,
+            )
+
+            html, client_name = self.app.generate_invoice(
+                invoice_jobs, invoice_theme=args.invoice_template
+            )
+
+        else:
+            if args.table and not args.summary:
+                conditions = parse_conditions(cutoff_condition)
+
+                invoice_jobs = self.app.get_invoice_jobs(
+                    client_id=args.client_id,
+                    conditions=conditions,
+                )
+
+                html, client_name = self.app.generate_invoice(
+                    invoice_jobs, invoice_theme=args.invoice_template
+                )
+
+        if args.add_jobs and not args.summary and invoice_jobs:
+            extra_numbers = [
+                n.strip() for n in args.add_jobs.split(",") if n.strip()
+            ]
+            if extra_numbers:
+                extra_jobs = self.app.get_jobs_by_job_numbers(
+                    args.client_id, extra_numbers
+                )
+                if extra_jobs:
+                    existing = {j["job_number"] for j in invoice_jobs}
+                    for job in extra_jobs:
+                        if job["job_number"] not in existing:
+                            invoice_jobs.append(job)
+                            existing.add(job["job_number"])
+                    html, client_name = self.app.generate_invoice(
+                        invoice_jobs,
+                        invoice_theme=args.invoice_template,
+                    )
+
+        if args.print:
+            self.app.html_to_pdf(
+                html, client_name, summary_invoice=args.summary
+            )
+
+        if args.csv:
+            self.app.generate_csv_invoice(invoice_jobs, client_name)
+
+        if args.markdown:
+            md = self.app.to_md(html)
+
+            TranscriptorView().console.print(md)
+
+        else:
+            title = f"Jobs for {client_name}"
+            if args.summary:
+                title = f"Summary Invoice for {client_name}"
+
+            TranscriptorView().print_table(
+                invoice_jobs,
+                orientation="horizontal",
+                title=title,
+                config=self.app.config,
+            )
+
+    invoice_parser.set_defaults(func=invoice)
+
+    @cmd2.with_argparser(invoice_parser)
+    def do_invoice(self, args: Namespace):
+        """
+
+        Invoice command help
+
+        """
+
+        if hasattr(args, "func"):
+            args.func(self, args)
+
+        else:
+            self.do_help("invoice")
+
+    def purge(self, args):
+        if not any([args.raw, args.where]):
+            self.poutput("Please provide conditions to purge")
+
+            return
+
+        if args.raw:
+            jobs = self.app.api.get_jobs(raw_sql_stmt=args.raw)
+
+        else:
+            conditions = parse_conditions(args.where)
+
+            jobs = self.app.api.get_jobs(conditions=conditions)
+
+        if not jobs:
+            self.poutput("No jobs found")
+
+        else:
+            message = [
+                ("class:prompt", "Are you sure you want to delete (y/n):"),
+                ("class:space", "  "),
+            ]
+
+            confirm_delete = prompt(
+                message,
+                style=style,
+                validator=yes_no_validator,
+            )
+
+            if confirm_delete.lower().startswith("y"):
+                self.app.purge_job_files(jobs)
+
+    purge_parser.set_defaults(func=purge)
+
+    @cmd2.with_argparser(purge_parser)
+    def do_purge(self, args: Namespace):
+        """
+
+        Purge command help
+
+        """
+
+        if hasattr(args, "func"):
+            args.func(self, args)
+
+        else:
+            self.do_help("purge")
+
+    @cmd2.with_argparser(backup_parser)
+    def do_backup(self, args: Namespace):
+        """Create a backup of the database."""
+        try:
+            backup_path = self.app.backup.create_backup()
+            self.poutput(f"Backup created successfully: {backup_path}")
+        except Exception as e:
+            self.poutput(f"Error creating backup: {e}")
+
+    @cmd2.with_argparser(restore_parser)
+    def do_restore(self, args: Namespace):
+        """Restore the database from a backup."""
+        backups = self.app.backup.list_backups()
+        if not backups:
+            self.poutput("No backups found.")
+            return
+
+        self.poutput("Available backups:")
+        for i, backup in enumerate(backups):
+            self.poutput(f"{i + 1}: {backup.name}")
+
+        try:
+            selection = int(
+                prompt("Enter the number of the backup to restore: ")
+            )
+            if 1 <= selection <= len(backups):
+                backup_to_restore = backups[selection - 1]
+                self.app.backup.restore_backup(backup_to_restore)
+                self.poutput(
+                    f"Database restored from {backup_to_restore.name}"
+                )
+            else:
+                self.poutput("Invalid selection.")
+        except ValueError:
+            self.poutput("Invalid input. Please enter a number.")
+        except Exception as e:
+            self.poutput(f"Error restoring backup: {e}")
+
+
+def main(argv=None):
+    c = TranscriptorCMD()
+
+    if argv:
+        alias_script = c.app.CONFIG_DIR.joinpath(".cmd2rc")
+        if alias_script.exists():
+            with open(os.devnull, "w") as devnull:
+                _stdout = c.stdout
+                c.stdout = devnull
+                try:
+                    c.do_run_script(str(alias_script))
+                finally:
+                    c.stdout = _stdout
+
+        command = " ".join(argv)
+        c.onecmd_plus_hooks(command)
+        return
+
+    try:
+        sys.exit(c.cmdloop())
+    except (KeyboardInterrupt, EOFError):
+        c.poutput("\n** Exiting program, bye **\n")
+        return True
+
+
+if __name__ == "__main__":
+    main()
