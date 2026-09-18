@@ -9,7 +9,6 @@ from typing import Callable, Dict, List, Optional
 from textual import events, on
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
-from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
@@ -3238,7 +3237,6 @@ class VimHelpScreen(ModalScreen):
         help_text = f"""# Vim Mode Help
 
 ## Global (always available)
-- `v`          : Toggle vim mode on/off
 - `H` / `L`    : Switch to previous/next tab
 - `?`          : Show this help
 
@@ -3336,11 +3334,7 @@ class TranscriptorTUI(App):
 
     CSS_PATH = "tui.css"
 
-    # Reactive attribute to control the Vim mode
-    vim_mode: reactive[bool] = reactive(False)
-
     BINDINGS = [
-        ("v", "toggle_vim_mode", "Toggle Vim Mode (V)"),
         ("H", "vim_tab_left", "Tab Left (H)"),
         ("L", "vim_tab_right", "Tab Right (L)"),
         ("?", "show_vim_help", "Vim Help"),
@@ -3383,16 +3377,9 @@ class TranscriptorTUI(App):
                 )
         yield VimFooter(id="vim-footer")
 
-    def action_toggle_vim_mode(self) -> None:
-        self.vim_mode = not self.vim_mode
-        # Optionally focus the main content after toggling
-        self.query_one(TabbedContent).focus()
-
-    def watch_vim_mode(self, enabled: bool) -> None:
-        """Update footer when vim mode changes."""
+    def on_mount(self) -> None:
         footer = self.query_one("#vim-footer", VimFooter)
-        footer.set_vim_mode(enabled)
-        # Also update bindings (in case pane changed while vim was off)
+        footer.set_vim_mode(True)
         self.update_vim_footer()
 
     def update_vim_footer(self):
@@ -3419,8 +3406,8 @@ class TranscriptorTUI(App):
 
     def on_key(self, event: events.Key) -> None:
         """Global vim key dispatcher."""
-        # Only active when vim_mode is on and not in a modal screen
-        if not self.vim_mode or isinstance(self.screen, ModalScreen):
+        # Vim keys are always on; only modal screens opt out.
+        if isinstance(self.screen, ModalScreen):
             return
 
         key = event.key
