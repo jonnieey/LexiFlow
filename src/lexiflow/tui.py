@@ -981,15 +981,23 @@ class TranscriptionScreen(ModalScreen):
     def _format_info(self) -> str:
         """Pure formatting, no widget access -- testable directly."""
         provider = self.job_data.get("provider")
+        if not provider:
+            return "Not yet submitted for transcription."
+
         external_job_id = self.job_data.get("external_job_id")
         status = self.job_data.get("transcription_status")
-        if provider:
-            return (
-                f"Provider: {provider}\n"
-                f"External ID: {external_job_id}\n"
-                f"Status: {status or 'unknown'}"
-            )
-        return "Not yet submitted for transcription."
+        lines = [
+            f"Provider: {provider}",
+            f"External ID: {external_job_id}",
+            f"Status: {status or 'unknown'}",
+        ]
+        last_polled_at = self.job_data.get("transcription_last_polled_at")
+        if last_polled_at:
+            lines.append(f"Last polled: {last_polled_at}")
+        last_error = self.job_data.get("transcription_last_error")
+        if last_error:
+            lines.append(f"Last error: {last_error}")
+        return "\n".join(lines)
 
     def _update_info_display(self):
         self.query_one("#transcription-info", Static).update(
@@ -1008,6 +1016,7 @@ class TranscriptionScreen(ModalScreen):
         self.job_data["provider"] = provider
         self.job_data["external_job_id"] = external_id
         self.job_data["transcription_status"] = "in_progress"
+        self.job_data["transcription_last_error"] = None
         return external_id
 
     async def do_poll(self) -> Optional[str]:
@@ -1016,6 +1025,10 @@ class TranscriptionScreen(ModalScreen):
         status = await self.app.transcriptor.poll_transcription_status(
             job_id
         )
+        self.job_data["transcription_last_polled_at"] = (
+            datetime.now().isoformat()
+        )
+        self.job_data["transcription_last_error"] = None
         if status is not None:
             self.job_data["transcription_status"] = status
         return status
@@ -1027,6 +1040,7 @@ class TranscriptionScreen(ModalScreen):
             job_id
         )
         self.job_data["transcription_status"] = "transcribed"
+        self.job_data["transcription_last_error"] = None
         return transcript_path
 
     @on(Button.Pressed, "#transcription-submit")

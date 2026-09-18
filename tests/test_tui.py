@@ -152,6 +152,57 @@ def test_do_fetch_updates_status_and_returns_path(tmp_path):
         patcher.stop()
 
 
+def test_do_submit_clears_last_error_on_success():
+    screen, patcher = _transcription_screen_with_mock_app(
+        {"id": 5, "transcription_last_error": "previous failure"}
+    )
+    try:
+        screen.app.transcriptor.submit_transcription.return_value = "ext-1"
+        asyncio.run(screen.do_submit("revai"))
+        assert screen.job_data["transcription_last_error"] is None
+    finally:
+        patcher.stop()
+
+
+def test_do_poll_records_last_polled_at_and_clears_error():
+    screen, patcher = _transcription_screen_with_mock_app(
+        {
+            "id": 5,
+            "provider": "revai",
+            "external_job_id": "ext-1",
+            "transcription_last_error": "previous failure",
+        }
+    )
+    try:
+        screen.app.transcriptor.poll_transcription_status.return_value = (
+            "transcribed"
+        )
+        asyncio.run(screen.do_poll())
+        assert screen.job_data["transcription_last_polled_at"]
+        assert screen.job_data["transcription_last_error"] is None
+    finally:
+        patcher.stop()
+
+
+def test_do_fetch_clears_last_error_on_success():
+    screen, patcher = _transcription_screen_with_mock_app(
+        {
+            "id": 5,
+            "provider": "revai",
+            "external_job_id": "ext-1",
+            "transcription_last_error": "previous failure",
+        }
+    )
+    try:
+        screen.app.transcriptor.fetch_transcript.return_value = (
+            "/tmp/x_transcript.txt"
+        )
+        asyncio.run(screen.do_fetch())
+        assert screen.job_data["transcription_last_error"] is None
+    finally:
+        patcher.stop()
+
+
 def test_format_info_no_provider():
     screen, patcher = _transcription_screen_with_mock_app({"id": 5})
     try:
@@ -174,5 +225,56 @@ def test_format_info_with_provider():
         assert "revai" in info
         assert "ext-1" in info
         assert "in_progress" in info
+    finally:
+        patcher.stop()
+
+
+def test_format_info_shows_last_polled_at():
+    screen, patcher = _transcription_screen_with_mock_app(
+        {
+            "id": 5,
+            "provider": "revai",
+            "external_job_id": "ext-1",
+            "transcription_status": "in_progress",
+            "transcription_last_polled_at": "2023-01-01T12:00:00",
+        }
+    )
+    try:
+        info = screen._format_info()
+        assert "2023-01-01T12:00:00" in info
+    finally:
+        patcher.stop()
+
+
+def test_format_info_shows_last_error():
+    screen, patcher = _transcription_screen_with_mock_app(
+        {
+            "id": 5,
+            "provider": "revai",
+            "external_job_id": "ext-1",
+            "transcription_status": "in_progress",
+            "transcription_last_error": "Connection timed out",
+        }
+    )
+    try:
+        info = screen._format_info()
+        assert "Connection timed out" in info
+    finally:
+        patcher.stop()
+
+
+def test_format_info_omits_error_line_when_none():
+    screen, patcher = _transcription_screen_with_mock_app(
+        {
+            "id": 5,
+            "provider": "revai",
+            "external_job_id": "ext-1",
+            "transcription_status": "in_progress",
+            "transcription_last_error": None,
+        }
+    )
+    try:
+        info = screen._format_info()
+        assert "Last error" not in info
     finally:
         patcher.stop()
