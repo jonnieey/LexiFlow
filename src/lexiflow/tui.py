@@ -3292,11 +3292,13 @@ class VimHelpScreen(ModalScreen):
 
 ## Global (always available)
 - `H` / `L`    : Switch to previous/next tab
+- `:`          : Open command palette
 - `?`          : Show this help
 
 ## Navigation (when focused on a table or scrollable area)
 - `j` / `k`    : Move down/up (table rows or scroll)
 - `g` / `G`    : Go to top/bottom
+- `/`          : Filter rows (Escape clears)
 - `x`          : Toggle selection (tables with checkboxes)
 - `o` / `Enter`: Open context menu for current item
 
@@ -3357,6 +3359,10 @@ class TranscriptorTUI(App):
     """An application with per-tab and toggleable bindings."""
 
     CSS_PATH = "tui.css"
+
+    # Vim-style ':' opens the command palette instead of Textual's
+    # default ctrl+p.
+    COMMAND_PALETTE_BINDING = "colon"
 
     BINDINGS = [
         ("H", "vim_tab_left", "Tab Left (H)"),
