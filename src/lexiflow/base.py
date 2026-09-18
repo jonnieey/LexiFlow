@@ -23,6 +23,7 @@ from lexiflow.models import (
     SummaryInvoice,
     SummaryInvoiceLine,
 )
+from lexiflow.services import get_service
 from lexiflow.utils import (
     TEMPLATE_MAPPING,
     convert,
@@ -976,6 +977,115 @@ class Transcriptor:
                         p.unlink(missing_ok=True)
                     except OSError as e:
                         logger.error(f"Error deleting file {p}: {e}")
+
+    def _get_transcription_job(self, job_id: int) -> Dict[str, Any]:
+        jobs = self.api.get_jobs(conditions={"id": [("=", job_id)]})
+        if not jobs:
+            raise ValueError(f"No job found with id {job_id}")
+        return jobs[0]
+
+    async def submit_transcription(
+        self,
+        job_id: int,
+        provider: str,
+        additional_vocabulary: Optional[List[str]] = None,
+    ) -> str:
+        """
+        Submit an existing job's media file to an external transcription
+        provider, recording provider/external_job_id/transcription_status
+        on the job row.
+
+        Returns the provider's external job id.
+        """
+        job = self._get_transcription_job(job_id)
+        file_path = Path(job["job_path"])
+        if not file_path.exists():
+            raise FileNotFoundError(f"Job file not found: {file_path}")
+
+        service = get_service(provider)
+        try:
+            external_job_id = await service.submit_job(
+                file_path, additional_vocabulary=additional_vocabulary
+            )
+        finally:
+            await service.close()
+
+        self.api.update_jobs(
+            conditions={"id": [("=", job_id)]},
+            values={
+                "provider": provider,
+                "external_job_id": external_job_id,
+                "transcription_status": "in_progress",
+            },
+        )
+        return external_job_id
+
+    async def poll_transcription_status(self, job_id: int) -> Optional[str]:
+        """
+        Poll the external provider for this job's current transcription
+        status and update the job row.
+
+        Returns the new status, or None if the job has no
+        provider/external_job_id set yet, or the poll failed.
+        """
+        job = self._get_transcription_job(job_id)
+        provider = job.get("provider")
+        external_job_id = job.get("external_job_id")
+        if not provider or not external_job_id:
+            return None
+
+        service = get_service(provider)
+        try:
+            status_info = await service.get_job_status(external_job_id)
+        finally:
+            await service.close()
+
+        if status_info is None:
+            return None
+
+        status = status_info.get("status")
+        self.api.update_jobs(
+            conditions={"id": [("=", job_id)]},
+            values={"transcription_status": status},
+        )
+        return status
+
+    async def fetch_transcript(
+        self, job_id: int, metadata: Optional[Dict[str, Any]] = None
+    ) -> Path:
+        """
+        Fetch the transcript text from the external provider and write it
+        to a .txt file in the job's existing directory (same convention
+        as task files/invoices). Updates transcription_status to
+        "transcribed".
+
+        Returns the path to the written transcript file.
+        """
+        job = self._get_transcription_job(job_id)
+        provider = job.get("provider")
+        external_job_id = job.get("external_job_id")
+        if not provider or not external_job_id:
+            raise ValueError(
+                f"Job {job_id} has no provider/external_job_id set"
+            )
+
+        service = get_service(provider)
+        try:
+            transcript_text = await service.get_transcript(
+                external_job_id, metadata=metadata
+            )
+        finally:
+            await service.close()
+
+        job_dir = Path(job["job_path"]).parent
+        transcript_path = job_dir / f"{job['job_number']}_transcript.txt"
+        transcript_path.write_text(transcript_text, encoding="utf-8")
+
+        self.api.update_jobs(
+            conditions={"id": [("=", job_id)]},
+            values={"transcription_status": "transcribed"},
+        )
+        return transcript_path
 
 
 if __name__ == "__main__":

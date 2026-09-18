@@ -1,8 +1,9 @@
+import asyncio
 import shutil
 import zipfile
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import yaml
@@ -948,3 +949,201 @@ def test_delete_jobs_raw_sql(transcriptor):
         mock_del.assert_called_with(
             conditions=None, raw_sql_stmt="WHERE id=1"
         )
+
+
+# -------- transcription-provider wiring (Phase 2) --------
+
+
+def _make_transcription_job(transcriptor, test_base_dir, **overrides):
+    unique = datetime.now().timestamp()
+    client_id = transcriptor.api.add_client(
+        {
+            "name": overrides.pop(
+                "client_name", f"TranscriptionClient {unique}"
+            ),
+            "email": "tx@test.com",
+        }
+    )
+    job_file = test_base_dir / f"audio_{unique}.mp3"
+    job_file.write_text("fake audio")
+    job_data = {
+        "client_id": client_id,
+        "date_received": "2023-01-01",
+        "job_number": overrides.pop("job_number", "TX001"),
+        "job_type": "Normal",
+        "status": "Pending",
+        "date_due": "2023-01-10",
+        "total_quantity": 10.0,
+        "quantity": 10.0,
+        "job_rate": 0.4,
+        "amount": 4.0,
+        "amount_paid": 0.0,
+        "job_path": str(job_file),
+        "note": "",
+    }
+    job_data.update(overrides)
+    job_id = transcriptor.api.add_job(job_data)
+    return job_id, job_file
+
+
+def test_submit_transcription_updates_job_row(transcriptor, test_base_dir):
+    job_id, job_file = _make_transcription_job(transcriptor, test_base_dir)
+
+    mock_service = AsyncMock()
+    mock_service.submit_job.return_value = "ext-123"
+
+    with patch(
+        "lexiflow.base.get_service", return_value=mock_service
+    ) as mock_get_service:
+        external_id = asyncio.run(
+            transcriptor.submit_transcription(job_id, "revai")
+        )
+
+    assert external_id == "ext-123"
+    mock_get_service.assert_called_once_with("revai")
+    mock_service.submit_job.assert_awaited_once_with(
+        job_file, additional_vocabulary=None
+    )
+    mock_service.close.assert_awaited_once()
+
+    job = transcriptor.api.get_jobs(conditions={"id": [("=", job_id)]})[0]
+    assert job["provider"] == "revai"
+    assert job["external_job_id"] == "ext-123"
+    assert job["transcription_status"] == "in_progress"
+
+
+def test_submit_transcription_passes_vocabulary(transcriptor, test_base_dir):
+    job_id, job_file = _make_transcription_job(transcriptor, test_base_dir)
+    mock_service = AsyncMock()
+    mock_service.submit_job.return_value = "ext-1"
+
+    with patch("lexiflow.base.get_service", return_value=mock_service):
+        asyncio.run(
+            transcriptor.submit_transcription(
+                job_id, "revai", additional_vocabulary=["Plaintiff"]
+            )
+        )
+
+    mock_service.submit_job.assert_awaited_once_with(
+        job_file, additional_vocabulary=["Plaintiff"]
+    )
+
+
+def test_submit_transcription_missing_job_raises(transcriptor):
+    with pytest.raises(ValueError, match="No job found"):
+        asyncio.run(transcriptor.submit_transcription(999999, "revai"))
+
+
+def test_submit_transcription_missing_file_raises(transcriptor, test_base_dir):
+    job_id, job_file = _make_transcription_job(transcriptor, test_base_dir)
+    job_file.unlink()
+
+    with pytest.raises(FileNotFoundError):
+        asyncio.run(transcriptor.submit_transcription(job_id, "revai"))
+
+
+def test_poll_transcription_status_updates_job(transcriptor, test_base_dir):
+    job_id, _ = _make_transcription_job(
+        transcriptor,
+        test_base_dir,
+        provider="revai",
+        external_job_id="ext-123",
+        transcription_status="in_progress",
+    )
+
+    mock_service = AsyncMock()
+    mock_service.get_job_status.return_value = {
+        "id": "ext-123",
+        "status": "transcribed",
+    }
+
+    with patch("lexiflow.base.get_service", return_value=mock_service):
+        status = asyncio.run(transcriptor.poll_transcription_status(job_id))
+
+    assert status == "transcribed"
+    mock_service.get_job_status.assert_awaited_once_with("ext-123")
+    job = transcriptor.api.get_jobs(conditions={"id": [("=", job_id)]})[0]
+    assert job["transcription_status"] == "transcribed"
+
+
+def test_poll_transcription_status_no_provider_returns_none(
+    transcriptor, test_base_dir
+):
+    job_id, _ = _make_transcription_job(transcriptor, test_base_dir)
+
+    with patch("lexiflow.base.get_service") as mock_get_service:
+        status = asyncio.run(transcriptor.poll_transcription_status(job_id))
+
+    assert status is None
+    mock_get_service.assert_not_called()
+
+
+def test_poll_transcription_status_failed_poll_returns_none(
+    transcriptor, test_base_dir
+):
+    job_id, _ = _make_transcription_job(
+        transcriptor,
+        test_base_dir,
+        provider="revai",
+        external_job_id="ext-123",
+    )
+    mock_service = AsyncMock()
+    mock_service.get_job_status.return_value = None
+
+    with patch("lexiflow.base.get_service", return_value=mock_service):
+        status = asyncio.run(transcriptor.poll_transcription_status(job_id))
+
+    assert status is None
+    job = transcriptor.api.get_jobs(conditions={"id": [("=", job_id)]})[0]
+    assert job["transcription_status"] is None
+
+
+def test_fetch_transcript_writes_file_and_updates_status(
+    transcriptor, test_base_dir
+):
+    job_id, job_file = _make_transcription_job(
+        transcriptor,
+        test_base_dir,
+        provider="revai",
+        external_job_id="ext-123",
+        transcription_status="in_progress",
+    )
+    mock_service = AsyncMock()
+    mock_service.get_transcript.return_value = "Hello, this is the transcript."
+
+    with patch("lexiflow.base.get_service", return_value=mock_service):
+        transcript_path = asyncio.run(transcriptor.fetch_transcript(job_id))
+
+    assert transcript_path == job_file.parent / "TX001_transcript.txt"
+    assert transcript_path.read_text() == "Hello, this is the transcript."
+    mock_service.get_transcript.assert_awaited_once_with(
+        "ext-123", metadata=None
+    )
+    job = transcriptor.api.get_jobs(conditions={"id": [("=", job_id)]})[0]
+    assert job["transcription_status"] == "transcribed"
+
+
+def test_fetch_transcript_passes_metadata(transcriptor, test_base_dir):
+    job_id, _ = _make_transcription_job(
+        transcriptor,
+        test_base_dir,
+        provider="notebooklm",
+        external_job_id="src-1",
+    )
+    mock_service = AsyncMock()
+    mock_service.get_transcript.return_value = "text"
+    metadata = {"WITNESS_NAME": "Jane Doe"}
+
+    with patch("lexiflow.base.get_service", return_value=mock_service):
+        asyncio.run(transcriptor.fetch_transcript(job_id, metadata=metadata))
+
+    mock_service.get_transcript.assert_awaited_once_with(
+        "src-1", metadata=metadata
+    )
+
+
+def test_fetch_transcript_missing_provider_raises(transcriptor, test_base_dir):
+    job_id, _ = _make_transcription_job(transcriptor, test_base_dir)
+
+    with pytest.raises(ValueError, match="no provider/external_job_id"):
+        asyncio.run(transcriptor.fetch_transcript(job_id))
