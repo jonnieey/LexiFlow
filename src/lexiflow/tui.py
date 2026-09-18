@@ -4,7 +4,7 @@ import shutil
 import zipfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Optional
 
 from textual import events, on
 from textual.app import App, ComposeResult
@@ -495,6 +495,7 @@ class Dashboard(BaseTable):
         super().__init__(*args, **kwargs)
         self.add_vim_binding("a", "Add job", "action_add_job")
         self.add_vim_binding("e", "Edit job", "action_edit_job")
+        self.add_vim_binding("t", "Transcribe job", "action_transcribe_job")
         self.add_vim_binding("x", "Toggle select", "action_toggle_select"),
         self.add_vim_binding(
             "o/Enter", "Context menu", "action_context_menu"
@@ -508,6 +509,7 @@ class Dashboard(BaseTable):
             with Horizontal(classes="button-bar"):
                 yield Button("Add Job", id="dash-add-job")
                 yield Button("Edit Job", id="dash-edit-job")
+                yield Button("Transcribe", id="dash-transcribe-job")
                 yield Button("Refresh", id="dash-refresh")
 
     def get_table(self) -> DataTable:
@@ -536,6 +538,7 @@ class Dashboard(BaseTable):
             ("Quantity", "quantity"),
             (f"Rate{suffix}", "rate"),
             (f"Amount{suffix}", "amount"),
+            ("Transcription", "transcription"),
         )
 
         jobs = self.app.transcriptor.api.get_jobs(
@@ -569,6 +572,7 @@ class Dashboard(BaseTable):
                     rate=rate,
                     show_currency=False,
                 ),
+                job.get("transcription_status") or "-",
                 key=str(idx),
             )
 
@@ -601,6 +605,24 @@ class Dashboard(BaseTable):
     def action_add_job(self):
         self.app.push_screen(AddJobScreen())
 
+    def action_transcribe_job(self):
+        if not self.selected_items:
+            self.notify("No job selected!", severity="error")
+            return
+        job_id = self.selected_items[0]
+        jobs = self.app.transcriptor.api.get_jobs(
+            conditions={"id": [("=", job_id)]}
+        )
+        if jobs:
+            job_data = (
+                jobs[0].__dict__
+                if hasattr(jobs[0], "__dict__")
+                else dict(jobs[0])
+            )
+            self.app.push_screen(
+                TranscriptionScreen(job_data), lambda _: self.refresh_table()
+            )
+
     def action_toggle_select(self):
         self.vim_toggle_select_current()
 
@@ -618,6 +640,10 @@ class Dashboard(BaseTable):
     def on_jobs_edit(self):
         self.action_edit_job()
 
+    @on(Button.Pressed, "#dash-transcribe-job")
+    def on_jobs_transcribe(self):
+        self.action_transcribe_job()
+
     @on(Button.Pressed, "#dash-refresh")
     def on_jobs_refresh(self):
         self.action_refresh_table()
@@ -630,6 +656,7 @@ class JobsTable(BaseTable):
         super().__init__(*args, **kwargs)
         self.add_vim_binding("a", "Add job", "action_add_job")
         self.add_vim_binding("e", "Edit job", "action_edit_job")
+        self.add_vim_binding("t", "Transcribe job", "action_transcribe_job")
         self.add_vim_binding(
             "i", "Generate invoice", "action_generate_invoice"
         )
@@ -646,6 +673,7 @@ class JobsTable(BaseTable):
             with Horizontal(classes="button-bar"):
                 yield Button("Add Job", id="jobs-add-job")
                 yield Button("Edit Job", id="jobs-edit-job")
+                yield Button("Transcribe", id="jobs-transcribe-job")
                 yield Button("Refresh", id="jobs-refresh")
                 yield Button("Generate Invoice", id="jobs-generate-invoice")
 
@@ -681,6 +709,7 @@ class JobsTable(BaseTable):
             ("Job Type", "job type"),
             ("Quantity", "quantity"),
             (f"Amount{suffix}", "amount"),
+            ("Transcription", "transcription"),
         )
 
         # Load jobs
@@ -707,6 +736,7 @@ class JobsTable(BaseTable):
                     rate=rate,
                     show_currency=False,
                 ),
+                job.get("transcription_status") or "-",
                 key=str(idx),
             )
 
@@ -740,6 +770,24 @@ class JobsTable(BaseTable):
                 job_data = job_data.__dict__
             self.app.push_screen(
                 JobEditScreen(job_data), lambda _: self.refresh_table()
+            )
+
+    def action_transcribe_job(self) -> None:
+        """Open the transcription screen for the first selected job."""
+        if not self.selected_items:
+            self.notify("No job selected!", severity="error")
+            return
+
+        job_id = self.selected_items[0]
+        jobs = self.app.transcriptor.api.get_jobs(
+            conditions={"id": [("=", job_id)]}
+        )
+        if jobs:
+            job_data = jobs[0]
+            if hasattr(job_data, "__dict__"):
+                job_data = job_data.__dict__
+            self.app.push_screen(
+                TranscriptionScreen(job_data), lambda _: self.refresh_table()
             )
 
     def action_generate_invoice(self) -> None:
@@ -819,6 +867,10 @@ class JobsTable(BaseTable):
     def on_jobs_edit(self):
         self.action_edit_job()
 
+    @on(Button.Pressed, "#jobs-transcribe-job")
+    def on_jobs_transcribe(self):
+        self.action_transcribe_job()
+
     @on(Button.Pressed, "#jobs-refresh")
     def on_jobs_refresh(self):
         self.action_refresh_table()
@@ -834,6 +886,7 @@ class JobContextMenu(BaseContextMenu):
 
     def get_menu_items(self):
         yield ListItem(Label("📝 Edit Job"), id="edit-job")
+        yield ListItem(Label("🎙️ Transcribe"), id="transcribe-job")
         yield ListItem(Label("🗑️ Delete Job"), id="delete-job")
         yield ListItem(Label("❌ Cancel"), id="cancel-context")
 
@@ -846,6 +899,15 @@ class JobContextMenu(BaseContextMenu):
                 else dict(self.item_data)
             )
             self.app.push_screen(JobEditScreen(job_dict), self.check_edit)
+        elif action == "transcribe-job":
+            job_dict = (
+                self.item_data.__dict__
+                if hasattr(self.item_data, "__dict__")
+                else dict(self.item_data)
+            )
+            self.app.push_screen(
+                TranscriptionScreen(job_dict), self.check_edit
+            )
         elif action == "delete-job":
 
             def check_confirm(confirm):
@@ -874,6 +936,148 @@ class JobContextMenu(BaseContextMenu):
             self.app.query_one("#dashboard-pane", Dashboard).refresh_table()
             self.app.query_one("#jobstable-pane", JobsTable).refresh_table()
         self.dismiss()
+
+
+class TranscriptionScreen(ModalScreen):
+    """Submit/poll/fetch external transcription for a job."""
+
+    TRANSCRIPTION_PROVIDERS = [
+        ("Speechmatics", "speechmatics"),
+        ("Rev.ai", "revai"),
+        ("NotebookLM", "notebooklm"),
+    ]
+
+    def __init__(self, job_data: Dict):
+        super().__init__()
+        self.job_data = dict(job_data)
+
+    def compose(self) -> ComposeResult:
+        with Container(id="transcription-screen"):
+            yield Label(
+                f"Transcription: {self.job_data.get('job_number', '')}",
+                classes="transcription-title",
+            )
+            yield Static(id="transcription-info")
+            with Container(id="transcription-submit-form"):
+                yield Label("Provider:")
+                yield Select(
+                    self.TRANSCRIPTION_PROVIDERS,
+                    id="transcription-provider",
+                    prompt="Select a provider",
+                )
+                yield Button(
+                    "Submit", variant="primary", id="transcription-submit"
+                )
+            with Horizontal(id="transcription-actions"):
+                yield Button("Poll Status", id="transcription-poll")
+                yield Button("Fetch Transcript", id="transcription-fetch")
+                yield Button(
+                    "Close", variant="default", id="transcription-close"
+                )
+
+    def on_mount(self):
+        self._update_info_display()
+
+    def _format_info(self) -> str:
+        """Pure formatting, no widget access -- testable directly."""
+        provider = self.job_data.get("provider")
+        external_job_id = self.job_data.get("external_job_id")
+        status = self.job_data.get("transcription_status")
+        if provider:
+            return (
+                f"Provider: {provider}\n"
+                f"External ID: {external_job_id}\n"
+                f"Status: {status or 'unknown'}"
+            )
+        return "Not yet submitted for transcription."
+
+    def _update_info_display(self):
+        self.query_one("#transcription-info", Static).update(
+            self._format_info()
+        )
+
+    async def do_submit(self, provider: str) -> str:
+        """Submit this job for transcription. Raises on error.
+
+        Kept free of widget access so it's directly testable.
+        """
+        job_id = self.job_data.get("id")
+        external_id = await self.app.transcriptor.submit_transcription(
+            job_id, provider
+        )
+        self.job_data["provider"] = provider
+        self.job_data["external_job_id"] = external_id
+        self.job_data["transcription_status"] = "in_progress"
+        return external_id
+
+    async def do_poll(self) -> Optional[str]:
+        """Poll transcription status for this job. Raises on error."""
+        job_id = self.job_data.get("id")
+        status = await self.app.transcriptor.poll_transcription_status(
+            job_id
+        )
+        if status is not None:
+            self.job_data["transcription_status"] = status
+        return status
+
+    async def do_fetch(self) -> Path:
+        """Fetch the transcript for this job. Raises on error."""
+        job_id = self.job_data.get("id")
+        transcript_path = await self.app.transcriptor.fetch_transcript(
+            job_id
+        )
+        self.job_data["transcription_status"] = "transcribed"
+        return transcript_path
+
+    @on(Button.Pressed, "#transcription-submit")
+    async def on_submit_pressed(self):
+        provider = self.query_one("#transcription-provider", Select).value
+        if not provider or provider is Select.BLANK:
+            self.app.notify("Please select a provider.", severity="error")
+            return
+        try:
+            external_id = await self.do_submit(provider)
+        except Exception as e:
+            self.app.notify(
+                f"Error submitting transcription: {e}", severity="error"
+            )
+            return
+        self._update_info_display()
+        self.app.notify(f"Submitted to {provider}: {external_id}")
+
+    @on(Button.Pressed, "#transcription-poll")
+    async def on_poll_pressed(self):
+        try:
+            status = await self.do_poll()
+        except Exception as e:
+            self.app.notify(
+                f"Error polling status: {e}", severity="error"
+            )
+            return
+        if status is None:
+            self.app.notify(
+                "No transcription in progress, or the provider poll failed.",
+                severity="warning",
+            )
+            return
+        self._update_info_display()
+        self.app.notify(f"Status: {status}")
+
+    @on(Button.Pressed, "#transcription-fetch")
+    async def on_fetch_pressed(self):
+        try:
+            transcript_path = await self.do_fetch()
+        except Exception as e:
+            self.app.notify(
+                f"Error fetching transcript: {e}", severity="error"
+            )
+            return
+        self._update_info_display()
+        self.app.notify(f"Transcript saved to {transcript_path}")
+
+    @on(Button.Pressed, "#transcription-close")
+    def on_close_pressed(self):
+        self.dismiss(True)
 
 
 class JobEditScreen(BaseEditScreen):
@@ -3037,6 +3241,7 @@ class VimHelpScreen(ModalScreen):
             help_text += """
 - `a` : Add new job
 - `e` : Edit selected job
+- `t` : Transcribe selected job (submit/poll/fetch)
 - `r` : Refresh table
 - `i` : Generate invoice from selected (All Jobs only)
 """

@@ -129,16 +129,47 @@ Button {
 
 /* Modal screens */
 #invoice-preview, #job-edit, #config-edit,
-#client-edit, #rate-edit, #profile-edit, #context-menu {
+#client-edit, #rate-edit, #profile-edit, #context-menu,
+#transcription-screen {
     width: 90%;
     height: 90%;
     border: double $accent;
     background: $surface;
 }
-#client-edit, #rate-edit, #profile-edit, #context-menu {
+#client-edit, #rate-edit, #profile-edit, #context-menu,
+#transcription-screen {
     width: 60%;
     height: auto;
     align: center middle;
+    padding: 1;
+}
+.transcription-title {
+    text-style: bold;
+    color: $accent;
+    text-align: center;
+    margin-bottom: 1;
+}
+#transcription-info {
+    margin: 1;
+    padding: 1;
+    border: solid $panel;
+    background: $panel;
+    height: auto;
+    min-height: 3;
+}
+#transcription-submit-form {
+    height: auto;
+    margin-bottom: 1;
+}
+#transcription-submit-form > Select {
+    margin-bottom: 1;
+}
+#transcription-actions {
+    height: auto;
+    align: center middle;
+}
+#transcription-actions > Button {
+    margin: 0 1;
 }
 #invoice-preview {
     width: 90%;
