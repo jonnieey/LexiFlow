@@ -2397,6 +2397,7 @@ class Invoice(Container):
         self._vim_bindings = [
             ("a", "Add cutoffs", "action_add_cutoffs"),
             ("r", "Refresh cutoffs", "load_cutoffs"),
+            ("ctrl+w", "Switch pane", "action_switch_pane"),
         ]
 
     def compose(self) -> ComposeResult:
@@ -2512,6 +2513,15 @@ class Invoice(Container):
                 self.load_cutoffs()
 
         self.app.push_screen(AddCutoffsScreen(), check_add)
+
+    def action_switch_pane(self) -> None:
+        """Toggle focus between the jobs pane (left) and cutoffs pane (right)."""
+        right_table = self.query_one("#invoice-cutoffs-table", DataTable)
+        left_table = self.query_one("#invoice-jobs-table", DataTable)
+        if self.app.screen.focused is right_table:
+            left_table.focus()
+        else:
+            right_table.focus()
 
     @on(Button.Pressed, "#cutoffs-add")
     def on_cutoffs_add(self):
@@ -3334,6 +3344,7 @@ class VimHelpScreen(ModalScreen):
             help_text += """
 - `a` : Add cutoffs
 - `r` : Refresh cutoffs table
+- `Ctrl+w` : Switch between the jobs pane and cutoffs pane
 """
         elif active_id == "config":
             help_text += """
