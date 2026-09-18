@@ -131,6 +131,7 @@ class BaseTable(Container):
         ("g/G", "Top/bottom"),
         ("h/l", "Move column"),
         ("r", "Refresh"),
+        ("/", "Filter"),
     ]
 
     def __init__(self, *args, **kwargs):
@@ -139,6 +140,48 @@ class BaseTable(Container):
         self._sort_toggles = set()
         self.data = []  # raw data (list of dicts)
         self._custom_vim_bindings = []
+        self._filter_query = ""
+
+    def open_filter(self) -> None:
+        """Show and focus this pane's '/' filter input."""
+        try:
+            filter_input = self.query_one(".table-filter", Input)
+        except Exception:
+            return
+        filter_input.display = True
+        filter_input.focus()
+
+    def close_filter(self) -> bool:
+        """Hide and clear the filter, restoring all rows. Returns True if
+        a filter was actually open (so callers can decide whether Escape
+        did anything here)."""
+        try:
+            filter_input = self.query_one(".table-filter", Input)
+        except Exception:
+            return False
+        was_open = bool(filter_input.display)
+        filter_input.value = ""
+        filter_input.display = False
+        self._filter_query = ""
+        self.refresh_table()
+        self.get_table().focus()
+        return was_open
+
+    def _row_matches(self, item, query: str) -> bool:
+        query = query.lower()
+        values = item.values() if isinstance(item, dict) else vars(item).values()
+        return any(query in str(v).lower() for v in values if v is not None)
+
+    def filter_rows(self, rows: list) -> list:
+        """Apply the current '/' filter query to a list of raw row dicts."""
+        if not self._filter_query:
+            return rows
+        return [r for r in rows if self._row_matches(r, self._filter_query)]
+
+    @on(Input.Changed, ".table-filter")
+    def _on_filter_changed(self, event: Input.Changed) -> None:
+        self._filter_query = event.value.strip()
+        self.refresh_table()
 
     def add_vim_binding(self, key: str, description: str, method_name: str):
         """Register a custom vim key binding."""
@@ -280,6 +323,9 @@ class BaseTable(Container):
             return True
         if key == "r":
             self.refresh_table()
+            return True
+        if key == "slash":
+            self.open_filter()
             return True
         # Action keys (to be overridden by subclasses that have them)
 
@@ -502,6 +548,7 @@ class Dashboard(BaseTable):
 
     def compose(self) -> ComposeResult:
         yield Label("Pending Jobs", classes="title")
+        yield Input(placeholder="/ filter…", classes="table-filter")
         yield DataTable(id="pending-jobs-table")
         yield Static(id="pending-jobs-selection-info")
         with Container(id="dashboard-controls", classes="panel-controls"):
@@ -543,6 +590,7 @@ class Dashboard(BaseTable):
         jobs = self.app.transcriptor.api.get_jobs(
             conditions={"status": [("=", "Pending")]}
         )
+        jobs = self.filter_rows(jobs)
         self.data = jobs
         self.selected_items = []
         self.update_selection_info()
@@ -666,6 +714,7 @@ class JobsTable(BaseTable):
 
     def compose(self) -> ComposeResult:
         yield Label("All Jobs", classes="title")
+        yield Input(placeholder="/ filter…", classes="table-filter")
         yield DataTable(id="jobs-data-table")
         yield Static(id="jobs-selection-info")
         with Container(id="jobs-controls", classes="panel-controls"):
@@ -713,6 +762,7 @@ class JobsTable(BaseTable):
 
         # Load jobs
         jobs = self.app.transcriptor.api.get_jobs()
+        jobs = self.filter_rows(jobs)
         self.data = jobs
         self.selected_items = []
         self.update_selection_info()
@@ -1927,6 +1977,7 @@ class Clients(BaseTable):
 
     def compose(self) -> ComposeResult:
         yield Label("Clients", classes="title")
+        yield Input(placeholder="/ filter…", classes="table-filter")
         yield DataTable(id="clients-table")
         yield Static(id="clients-selection-info")
         with Container(id="clients-controls", classes="panel-controls"):
@@ -1957,6 +2008,7 @@ class Clients(BaseTable):
         )
 
         clients = self.app.transcriptor.api.get_clients()
+        clients = self.filter_rows(clients)
         self.data = clients
         self.update_selection_info()
 
@@ -2170,6 +2222,7 @@ class Rates(BaseTable):
 
     def compose(self) -> ComposeResult:
         yield Label("Rates", classes="title")
+        yield Input(placeholder="/ filter…", classes="table-filter")
         yield DataTable(id="rates-table")
         yield Static(id="rates-selection-info")
         with Container(id="rates-controls", classes="panel-controls"):
@@ -2199,6 +2252,7 @@ class Rates(BaseTable):
         )
 
         rates = self.app.transcriptor.api.get_rates()
+        rates = self.filter_rows(rates)
         self.data = rates
         self.update_selection_info()
 
@@ -3366,9 +3420,19 @@ class TranscriptorTUI(App):
             return
 
         key = event.key
+        pane = self._get_active_pane()
+
+        if key == "escape":
+            if pane and hasattr(pane, "close_filter") and pane.close_filter():
+                event.stop()
+            return
+
+        # Typing into a focused Input/TextArea (e.g. the '/' filter) must
+        # never be hijacked as a vim key.
+        if isinstance(self.screen.focused, (Input, TextArea)):
+            return
 
         # Delegate to the active pane
-        pane = self._get_active_pane()
         if pane and hasattr(pane, "handle_vim_key"):
             if pane.handle_vim_key(key):
                 event.stop()

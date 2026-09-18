@@ -22,6 +22,11 @@ Input, Select, TextArea {
 Input:focus, Select:focus, TextArea:focus {
     border: solid $accent;
 }
+.table-filter {
+    display: none;
+    border: solid $accent;
+    margin-bottom: 1;
+}
 
 /* Common classes */
 .preview-title, .edit-title, .config-title {
