@@ -48,6 +48,8 @@ class TestViewGeneration:
                 "provider": None,
                 "external_job_id": None,
                 "transcription_status": None,
+                "transcription_last_polled_at": None,
+                "transcription_last_error": None,
             }
         ]
         view.generate_table(data, orientation="horizontal")
@@ -56,6 +58,8 @@ class TestViewGeneration:
         assert "Provider" not in headers
         assert "External Job Id" not in headers
         assert "Transcription Status" not in headers
+        assert "Transcription Last Polled At" not in headers
+        assert "Transcription Last Error" not in headers
 
     def test_generate_table_horizontal_list_of_lists(self, view):
         data = [

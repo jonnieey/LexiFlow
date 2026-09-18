@@ -30,6 +30,8 @@ class Database:
             "provider": "TEXT",
             "external_job_id": "TEXT",
             "transcription_status": "TEXT",
+            "transcription_last_polled_at": "TEXT",
+            "transcription_last_error": "TEXT",
         }
         with self.engine.connect() as conn:
             existing = {

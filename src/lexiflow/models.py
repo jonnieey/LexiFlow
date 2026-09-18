@@ -73,6 +73,12 @@ class Job(Base):
     provider: Mapped[Optional[str]] = mapped_column(nullable=True)
     external_job_id: Mapped[Optional[str]] = mapped_column(nullable=True)
     transcription_status: Mapped[Optional[str]] = mapped_column(nullable=True)
+    transcription_last_polled_at: Mapped[Optional[str]] = mapped_column(
+        nullable=True
+    )
+    transcription_last_error: Mapped[Optional[str]] = mapped_column(
+        nullable=True
+    )
     client: Mapped[Client] = relationship("Client", back_populates="jobs")
 
     __table_args__ = (

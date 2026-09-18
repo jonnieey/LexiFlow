@@ -124,6 +124,8 @@ class TestDatabase:
         assert "provider" in columns
         assert "external_job_id" in columns
         assert "transcription_status" in columns
+        assert "transcription_last_polled_at" in columns
+        assert "transcription_last_error" in columns
 
         # Existing row survives the backfill with the new columns NULL.
         with db.engine.connect() as conn2:

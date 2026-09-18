@@ -154,6 +154,41 @@ def test_job_model_provider_tracking_columns_settable(
     assert saved.transcription_status == "in_progress"
 
 
+def test_job_model_polling_metadata_columns_default_none(
+    db_session, sample_client, sample_job
+):
+    db_session.add_all([sample_client, sample_job])
+    db_session.commit()
+
+    job = db_session.query(Job).first()
+    assert job.transcription_last_polled_at is None
+    assert job.transcription_last_error is None
+
+
+def test_job_model_polling_metadata_columns_settable(db_session, sample_client):
+    job = Job(
+        client=sample_client,
+        date_received="2023-01-01",
+        job_number="JOB005",
+        job_type="Normal",
+        status="Pending",
+        date_due="2023-01-10",
+        total_quantity=60.0,
+        quantity=60.0,
+        job_rate=0.4,
+        amount=24.0,
+        job_path="/path/to/job",
+        transcription_last_polled_at="2023-01-01T12:00:00",
+        transcription_last_error="Connection timed out",
+    )
+    db_session.add(job)
+    db_session.commit()
+
+    saved = db_session.query(Job).filter_by(job_number="JOB005").first()
+    assert saved.transcription_last_polled_at == "2023-01-01T12:00:00"
+    assert saved.transcription_last_error == "Connection timed out"
+
+
 def test_job_amount_trigger(db_session, sample_client):
     """Test the trigger that updates amount when rate or quantity changes"""
     job = Job(

@@ -170,6 +170,8 @@ class TranscriptorView:
                     "provider",
                     "external_job_id",
                     "transcription_status",
+                    "transcription_last_polled_at",
+                    "transcription_last_error",
                 )
             ]
             for col in filtered_columns:
