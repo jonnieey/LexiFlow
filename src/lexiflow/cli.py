@@ -6,13 +6,14 @@ import sys
 from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import cmd2
 from prompt_toolkit import prompt
 from prompt_toolkit.styles import Style
 
 from lexiflow.base import Transcriptor
+from lexiflow.config import config_manager
 from lexiflow.input_handler import CLIInputHandler
 from lexiflow.pdf import PDFRenderer
 from lexiflow.utils import (
@@ -357,6 +358,43 @@ transcribe_fetch_parser.add_argument(
     "-m",
     "--metadata",
     help="Path to a metadata JSON file to enhance the transcript request",
+)
+
+
+def _mask_secret(key: str, value: Any) -> str:
+    """Mask API-key-like values for safe display/logging."""
+    if "API_KEY" not in key and "KEY" not in key:
+        return str(value)
+    if value and len(str(value)) > 8:
+        value = str(value)
+        return value[:4] + "*" * (len(value) - 8) + value[-4:]
+    return "[REDACTED]"
+
+
+config_parser = base_subparsers.add_parser(
+    "config", help="manage LegatoFlow provider API config"
+)
+config_subparsers = config_parser.add_subparsers(
+    title="subcommands", help="subcommand help"
+)
+
+config_show_parser = config_subparsers.add_parser(
+    "show", help="show current configuration"
+)
+
+config_set_parser = config_subparsers.add_parser(
+    "set", help="set a configuration value"
+)
+config_set_parser.add_argument("key", help="Configuration key to set")
+config_set_parser.add_argument("value", help="Value to set")
+
+config_migrate_parser = config_subparsers.add_parser(
+    "migrate", help="migrate from .env to config file"
+)
+config_migrate_parser.add_argument(
+    "--env-file",
+    type=Path,
+    help="Path to .env file (default: auto-detect)",
 )
 
 
@@ -1482,6 +1520,51 @@ class TranscriptorCMD(cmd2.Cmd):
 
         else:
             self.do_help("transcribe")
+
+    def config_show(self, args: Namespace):
+        config_data = config_manager.config_data
+        if not config_data:
+            self.poutput("No configuration found.")
+            self.poutput(
+                "Use 'config migrate' to migrate from .env file."
+            )
+            return
+
+        self.poutput("Current configuration:")
+        for key, value in config_data.items():
+            self.poutput(f"  {key}: {_mask_secret(key, value)}")
+
+    config_show_parser.set_defaults(func=config_show)
+
+    def config_set(self, args: Namespace):
+        config_manager.set(args.key, args.value)
+        self.poutput(f"Set {args.key} = {_mask_secret(args.key, args.value)}")
+
+    config_set_parser.set_defaults(func=config_set)
+
+    def config_migrate(self, args: Namespace):
+        if config_manager.migrate_from_env(args.env_file):
+            self.poutput("Successfully migrated configuration from .env file.")
+            self.poutput(f"Configuration saved to: {config_manager.config_file}")
+        else:
+            self.poutput(
+                "Failed to migrate configuration. .env file not found or empty."
+            )
+
+    config_migrate_parser.set_defaults(func=config_migrate)
+
+    @cmd2.with_argparser(config_parser)
+    def do_config(self, args: Namespace):
+        """
+
+        Config command help
+
+        """
+        if hasattr(args, "func"):
+            args.func(self, args)
+
+        else:
+            self.do_help("config")
 
 
 def main(argv=None):
