@@ -1147,3 +1147,158 @@ def test_fetch_transcript_missing_provider_raises(transcriptor, test_base_dir):
 
     with pytest.raises(ValueError, match="no provider/external_job_id"):
         asyncio.run(transcriptor.fetch_transcript(job_id))
+
+
+# -------- polling metadata (last_polled_at / last_error) --------
+
+
+def test_submit_transcription_records_error_and_reraises(
+    transcriptor, test_base_dir
+):
+    job_id, _ = _make_transcription_job(transcriptor, test_base_dir)
+    mock_service = AsyncMock()
+    mock_service.submit_job.side_effect = RuntimeError("provider unreachable")
+
+    with patch("lexiflow.base.get_service", return_value=mock_service):
+        with pytest.raises(RuntimeError, match="provider unreachable"):
+            asyncio.run(transcriptor.submit_transcription(job_id, "revai"))
+
+    job = transcriptor.api.get_jobs(conditions={"id": [("=", job_id)]})[0]
+    assert job["transcription_last_error"] == "provider unreachable"
+    # A failed submit never got far enough to set these.
+    assert job["provider"] is None
+    assert job["external_job_id"] is None
+
+
+def test_submit_transcription_clears_previous_error_on_success(
+    transcriptor, test_base_dir
+):
+    job_id, _ = _make_transcription_job(
+        transcriptor,
+        test_base_dir,
+        transcription_last_error="stale error from a previous attempt",
+    )
+    mock_service = AsyncMock()
+    mock_service.submit_job.return_value = "ext-1"
+
+    with patch("lexiflow.base.get_service", return_value=mock_service):
+        asyncio.run(transcriptor.submit_transcription(job_id, "revai"))
+
+    job = transcriptor.api.get_jobs(conditions={"id": [("=", job_id)]})[0]
+    assert job["transcription_last_error"] is None
+
+
+def test_poll_transcription_status_sets_last_polled_at_on_success(
+    transcriptor, test_base_dir
+):
+    job_id, _ = _make_transcription_job(
+        transcriptor,
+        test_base_dir,
+        provider="revai",
+        external_job_id="ext-123",
+        transcription_last_error="stale error",
+    )
+    mock_service = AsyncMock()
+    mock_service.get_job_status.return_value = {"status": "transcribed"}
+
+    with patch("lexiflow.base.get_service", return_value=mock_service):
+        asyncio.run(transcriptor.poll_transcription_status(job_id))
+
+    job = transcriptor.api.get_jobs(conditions={"id": [("=", job_id)]})[0]
+    assert job["transcription_last_polled_at"] is not None
+    assert job["transcription_last_error"] is None
+
+
+def test_poll_transcription_status_records_error_when_poll_returns_none(
+    transcriptor, test_base_dir
+):
+    job_id, _ = _make_transcription_job(
+        transcriptor,
+        test_base_dir,
+        provider="revai",
+        external_job_id="ext-123",
+    )
+    mock_service = AsyncMock()
+    mock_service.get_job_status.return_value = None
+
+    with patch("lexiflow.base.get_service", return_value=mock_service):
+        asyncio.run(transcriptor.poll_transcription_status(job_id))
+
+    job = transcriptor.api.get_jobs(conditions={"id": [("=", job_id)]})[0]
+    assert job["transcription_last_polled_at"] is not None
+    assert job["transcription_last_error"]
+
+
+def test_poll_transcription_status_records_error_and_reraises_on_exception(
+    transcriptor, test_base_dir
+):
+    job_id, _ = _make_transcription_job(
+        transcriptor,
+        test_base_dir,
+        provider="revai",
+        external_job_id="ext-123",
+    )
+    mock_service = AsyncMock()
+    mock_service.get_job_status.side_effect = RuntimeError("network error")
+
+    with patch("lexiflow.base.get_service", return_value=mock_service):
+        with pytest.raises(RuntimeError, match="network error"):
+            asyncio.run(transcriptor.poll_transcription_status(job_id))
+
+    job = transcriptor.api.get_jobs(conditions={"id": [("=", job_id)]})[0]
+    assert job["transcription_last_polled_at"] is not None
+    assert job["transcription_last_error"] == "network error"
+
+
+def test_poll_transcription_status_no_provider_does_not_touch_polling_fields(
+    transcriptor, test_base_dir
+):
+    job_id, _ = _make_transcription_job(transcriptor, test_base_dir)
+
+    with patch("lexiflow.base.get_service") as mock_get_service:
+        asyncio.run(transcriptor.poll_transcription_status(job_id))
+
+    mock_get_service.assert_not_called()
+    job = transcriptor.api.get_jobs(conditions={"id": [("=", job_id)]})[0]
+    assert job["transcription_last_polled_at"] is None
+
+
+def test_fetch_transcript_records_error_and_reraises(
+    transcriptor, test_base_dir
+):
+    job_id, _ = _make_transcription_job(
+        transcriptor,
+        test_base_dir,
+        provider="revai",
+        external_job_id="ext-123",
+    )
+    mock_service = AsyncMock()
+    mock_service.get_transcript.side_effect = RuntimeError("fetch failed")
+
+    with patch("lexiflow.base.get_service", return_value=mock_service):
+        with pytest.raises(RuntimeError, match="fetch failed"):
+            asyncio.run(transcriptor.fetch_transcript(job_id))
+
+    job = transcriptor.api.get_jobs(conditions={"id": [("=", job_id)]})[0]
+    assert job["transcription_last_error"] == "fetch failed"
+    assert job["transcription_status"] != "transcribed"
+
+
+def test_fetch_transcript_clears_previous_error_on_success(
+    transcriptor, test_base_dir
+):
+    job_id, _ = _make_transcription_job(
+        transcriptor,
+        test_base_dir,
+        provider="revai",
+        external_job_id="ext-123",
+        transcription_last_error="stale error",
+    )
+    mock_service = AsyncMock()
+    mock_service.get_transcript.return_value = "transcript text"
+
+    with patch("lexiflow.base.get_service", return_value=mock_service):
+        asyncio.run(transcriptor.fetch_transcript(job_id))
+
+    job = transcriptor.api.get_jobs(conditions={"id": [("=", job_id)]})[0]
+    assert job["transcription_last_error"] is None

@@ -1004,9 +1004,16 @@ class Transcriptor:
 
         service = get_service(provider)
         try:
-            external_job_id = await service.submit_job(
-                file_path, additional_vocabulary=additional_vocabulary
-            )
+            try:
+                external_job_id = await service.submit_job(
+                    file_path, additional_vocabulary=additional_vocabulary
+                )
+            except Exception as e:
+                self.api.update_jobs(
+                    conditions={"id": [("=", job_id)]},
+                    values={"transcription_last_error": str(e)},
+                )
+                raise
         finally:
             await service.close()
 
@@ -1016,6 +1023,7 @@ class Transcriptor:
                 "provider": provider,
                 "external_job_id": external_job_id,
                 "transcription_status": "in_progress",
+                "transcription_last_error": None,
             },
         )
         return external_job_id
@@ -1035,18 +1043,42 @@ class Transcriptor:
             return None
 
         service = get_service(provider)
+        polled_at = datetime.now().isoformat()
         try:
-            status_info = await service.get_job_status(external_job_id)
+            try:
+                status_info = await service.get_job_status(external_job_id)
+            except Exception as e:
+                self.api.update_jobs(
+                    conditions={"id": [("=", job_id)]},
+                    values={
+                        "transcription_last_polled_at": polled_at,
+                        "transcription_last_error": str(e),
+                    },
+                )
+                raise
         finally:
             await service.close()
 
         if status_info is None:
+            self.api.update_jobs(
+                conditions={"id": [("=", job_id)]},
+                values={
+                    "transcription_last_polled_at": polled_at,
+                    "transcription_last_error": (
+                        "Provider poll returned no status"
+                    ),
+                },
+            )
             return None
 
         status = status_info.get("status")
         self.api.update_jobs(
             conditions={"id": [("=", job_id)]},
-            values={"transcription_status": status},
+            values={
+                "transcription_status": status,
+                "transcription_last_polled_at": polled_at,
+                "transcription_last_error": None,
+            },
         )
         return status
 
@@ -1071,9 +1103,16 @@ class Transcriptor:
 
         service = get_service(provider)
         try:
-            transcript_text = await service.get_transcript(
-                external_job_id, metadata=metadata
-            )
+            try:
+                transcript_text = await service.get_transcript(
+                    external_job_id, metadata=metadata
+                )
+            except Exception as e:
+                self.api.update_jobs(
+                    conditions={"id": [("=", job_id)]},
+                    values={"transcription_last_error": str(e)},
+                )
+                raise
         finally:
             await service.close()
 
@@ -1083,7 +1122,10 @@ class Transcriptor:
 
         self.api.update_jobs(
             conditions={"id": [("=", job_id)]},
-            values={"transcription_status": "transcribed"},
+            values={
+                "transcription_status": "transcribed",
+                "transcription_last_error": None,
+            },
         )
         return transcript_path
 
