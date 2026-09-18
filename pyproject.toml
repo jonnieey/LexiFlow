@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "lexiflow"
 description = "Unified transcription job management: CRUD/invoicing (Transcriptor) + external transcription services (LegatoFlow)"
 authors = [{ name = "Jonnieey", email = "johnjahi55@gmail.com" }]
-requires-python = ">=3.9,<3.13" #aifc module dropped in 3.13
+requires-python = ">=3.10,<3.13" #aifc module dropped in 3.13; notebooklm-py needs >=3.10
 readme = "README.md"
 license = "MIT"
 dynamic = ["version"]
@@ -25,7 +25,14 @@ dependencies = [
     "cffi>=1.17.1",
     "gnureadline>=8.2.13; sys_platform != 'win32'",
     "pyreadline3>=3.4.1; sys_platform == 'win32'",
-    "textual==6.2.0"
+    "textual==6.2.0",
+    "pdfplumber",
+    "openai",
+    "python-dotenv",
+    "python-dateutil",
+    "rev-ai",
+    "speechmatics-batch",
+    "notebooklm-py",
 ]
 [project.optional-dependencies]
     weasyprint = ["weasyprint>=60.0"]
