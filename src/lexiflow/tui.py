@@ -3302,6 +3302,7 @@ class VimHelpScreen(ModalScreen):
 
 ## Global (always available)
 - `H` / `L`    : Switch to previous/next tab
+- `1`-`7`      : Jump directly to tab N
 - `:`          : Open command palette
 - `?`          : Show this help
 
@@ -3449,6 +3450,10 @@ class TranscriptorTUI(App):
         if isinstance(self.screen.focused, (Input, TextArea)):
             return
 
+        if key.isdigit():
+            self._jump_to_tab(int(key))
+            return
+
         # Delegate to the active pane
         if pane and hasattr(pane, "handle_vim_key"):
             if pane.handle_vim_key(key):
@@ -3465,6 +3470,14 @@ class TranscriptorTUI(App):
             tab_content.active = pane_ids[new_index]
         except ValueError:
             self.bell()
+
+    def _jump_to_tab(self, number: int) -> None:
+        """Jump directly to the Nth tab (1-indexed, matching the tab order)."""
+        tab_content = self.query_one(TabbedContent)
+        pane_ids = [pane.id for pane in tab_content.query(TabPane)]
+        index = number - 1
+        if 0 <= index < len(pane_ids):
+            tab_content.active = pane_ids[index]
 
     def _get_active_pane(self):
         """Return the widget of the currently active tab."""
