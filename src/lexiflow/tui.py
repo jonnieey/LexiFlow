@@ -413,7 +413,35 @@ class BaseTable(Container):
         self._open_context_menu(row_key)
 
 
-class BaseAddScreen(ModalScreen):
+class VimModalMixin:
+    """Vim-centric navigation for any ModalScreen: 'j'/'k' move focus
+    forward/backward (Input/TextArea consume 'j'/'k' themselves while
+    typing, so this never fights normal text entry -- Textual's own key
+    bubbling already guarantees that), and Escape reproduces whatever
+    this screen's own Cancel/Close button does. Different screens
+    dismiss with different result values (True/False/None) that
+    push_screen callers rely on, so Escape must match each screen's
+    actual behavior exactly rather than always calling a bare
+    dismiss()."""
+
+    def key_j(self) -> None:
+        self.focus_next()
+
+    def key_k(self) -> None:
+        self.focus_previous()
+
+    def key_escape(self) -> None:
+        self.action_escape_dismiss()
+
+    def action_escape_dismiss(self) -> None:
+        """Default Escape behavior: dismiss with no result. Override in
+        screens whose Cancel/Close button dismisses with a specific
+        value, calling that same handler so Escape and the button stay
+        in sync."""
+        self.dismiss()
+
+
+class BaseAddScreen(VimModalMixin, ModalScreen):
     """Base class for simple add screens with common save/cancel buttons."""
 
     def __init__(self, title: str):
@@ -449,6 +477,9 @@ class BaseAddScreen(ModalScreen):
     def cancel(self):
         self.dismiss(False)
 
+    def action_escape_dismiss(self) -> None:
+        self.cancel()
+
     def validate(self) -> bool:
         """Return True if input is valid."""
         raise NotImplementedError
@@ -458,7 +489,7 @@ class BaseAddScreen(ModalScreen):
         raise NotImplementedError
 
 
-class BaseEditScreen(ModalScreen):
+class BaseEditScreen(VimModalMixin, ModalScreen):
     """Base class for edit screens with common save/cancel buttons."""
 
     def __init__(self, data: Dict, title: str):
@@ -499,6 +530,9 @@ class BaseEditScreen(ModalScreen):
     def cancel(self):
         self.dismiss(False)
 
+    def action_escape_dismiss(self) -> None:
+        self.cancel()
+
     def collect_values(self) -> Dict | None:
         """Collect and validate input values. Return None on error."""
         raise NotImplementedError
@@ -508,7 +542,7 @@ class BaseEditScreen(ModalScreen):
         raise NotImplementedError
 
 
-class BaseContextMenu(ModalScreen):
+class BaseContextMenu(VimModalMixin, ModalScreen):
     """Base class for context menus with common structure."""
 
     def __init__(self, item_data: Dict, title: str):
@@ -525,6 +559,14 @@ class BaseContextMenu(ModalScreen):
     def get_menu_items(self):
         """Return list of ListItem widgets."""
         raise NotImplementedError
+
+    def key_j(self) -> None:
+        """Move the highlighted menu item down (list, not widget focus)."""
+        self.query_one(ListView).action_cursor_down()
+
+    def key_k(self) -> None:
+        """Move the highlighted menu item up (list, not widget focus)."""
+        self.query_one(ListView).action_cursor_up()
 
     @on(ListView.Selected)
     def handle_selection(self, event: ListView.Selected):
@@ -987,7 +1029,7 @@ class JobContextMenu(BaseContextMenu):
         self.dismiss()
 
 
-class TranscriptionScreen(ModalScreen):
+class TranscriptionScreen(VimModalMixin, ModalScreen):
     """Submit/poll/fetch external transcription for a job."""
 
     TRANSCRIPTION_PROVIDERS = [
@@ -1140,6 +1182,9 @@ class TranscriptionScreen(ModalScreen):
 
     @on(Button.Pressed, "#transcription-close")
     def on_close_pressed(self):
+        self.dismiss(True)
+
+    def action_escape_dismiss(self) -> None:
         self.dismiss(True)
 
 
@@ -1342,7 +1387,7 @@ class JobEditScreen(BaseEditScreen):
             self.query_one("#amount", Input).value = f"{new_amount:.2f}"
 
 
-class AddJobScreen(ModalScreen):
+class AddJobScreen(VimModalMixin, ModalScreen):
     """Screen for adding new jobs following CLI workflow"""
 
     def __init__(self):
@@ -2729,7 +2774,7 @@ class Invoice(Container):
         self.app.notify(f"Invoice for {client_name} saved as CSV.")
 
 
-class InvoicePreviewScreen(ModalScreen):
+class InvoicePreviewScreen(VimModalMixin, ModalScreen):
     def __init__(self, html_content: str, client_name: str, jobs: List[Dict]):
         super().__init__()
         self.html_content = html_content
@@ -2919,7 +2964,7 @@ class ProfileEditScreen(BaseEditScreen):
         self.app.notify("Profile updated successfully!")
 
 
-class ConfigurationScreen(ModalScreen):
+class ConfigurationScreen(VimModalMixin, ModalScreen):
     """Screen for editing configuration"""
 
     def compose(self) -> ComposeResult:
@@ -3018,6 +3063,9 @@ class ConfigurationScreen(ModalScreen):
     def cancel_config(self):
         self.dismiss(True)
 
+    def action_escape_dismiss(self) -> None:
+        self.dismiss(True)
+
 
 class Configuration(Container):
     def __init__(self, *args, **kwargs):
@@ -3105,7 +3153,7 @@ Conversion Rate: {config.conversion_rate}
         self.app.push_screen(AboutScreen())
 
 
-class RestoreScreen(ModalScreen):
+class RestoreScreen(VimModalMixin, ModalScreen):
     """Screen for restoring database from backup"""
 
     def compose(self) -> ComposeResult:
@@ -3145,7 +3193,7 @@ class RestoreScreen(ModalScreen):
         self.dismiss()
 
 
-class PurgeScreen(ModalScreen):
+class PurgeScreen(VimModalMixin, ModalScreen):
     """Screen for purging job files"""
 
     def compose(self) -> ComposeResult:
@@ -3221,7 +3269,7 @@ class PurgeScreen(ModalScreen):
         self.dismiss()
 
 
-class AboutScreen(ModalScreen):
+class AboutScreen(VimModalMixin, ModalScreen):
     def compose(self) -> ComposeResult:
         with Container(id="about-screen"):
             yield Label("About Transcriptor", classes="about-title")
@@ -3242,7 +3290,7 @@ class AboutScreen(ModalScreen):
         self.dismiss()
 
 
-class ConfirmDelete(ModalScreen[bool]):
+class ConfirmDelete(VimModalMixin, ModalScreen[bool]):
     def __init__(self, item_type):
         super().__init__()
         self.item_type = item_type
@@ -3270,11 +3318,11 @@ class ConfirmDelete(ModalScreen[bool]):
     def cancel_delete(self):
         self.dismiss(False)
 
-    def key_escape(self):
+    def action_escape_dismiss(self) -> None:
         self.dismiss(False)
 
 
-class VimHelpScreen(ModalScreen):
+class VimHelpScreen(VimModalMixin, ModalScreen):
     """Display available vim keybindings."""
 
     def compose(self) -> ComposeResult:
@@ -3357,7 +3405,8 @@ class VimHelpScreen(ModalScreen):
 
 ## In modal screens (edit, context menu, etc.)
 - `Esc` : Cancel / close
-- `Tab` : Move between fields
+- `j` / `k` : Move to next/previous field (list up/down in context menus)
+- `Tab` : Move between fields (still works alongside j/k)
 - `Enter`: Select / confirm
 """
         return help_text
