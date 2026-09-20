@@ -2260,6 +2260,7 @@ class Rates(BaseTable):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.add_vim_binding("e", "Edit rate", "action_edit_rate")
+        self.add_vim_binding("alt+e", "Edit rate", "action_edit_rate")
         self.add_vim_binding("x", "Toggle select", "action_toggle_select"),
         self.add_vim_binding(
             "o/Enter", "Context menu", "action_context_menu"
@@ -3072,6 +3073,7 @@ class Configuration(Container):
         super().__init__(*args, **kwargs)
         self._vim_bindings = [
             ("e", "Edit configuration", "action_edit_config"),
+            ("alt+e", "Edit configuration", "action_edit_config"),
             ("r", "Refresh cutoffs", "action_refresh_table"),
         ]
 
@@ -3381,7 +3383,7 @@ class VimHelpScreen(VimModalMixin, ModalScreen):
 """
         elif active_id == "rates":
             help_text += """
-- `e` : Edit selected rate
+- `e` / `Alt+e` : Edit selected rate
 - `r` : Refresh table
 """
         elif active_id == "profile":
@@ -3397,7 +3399,7 @@ class VimHelpScreen(VimModalMixin, ModalScreen):
 """
         elif active_id == "config":
             help_text += """
-- `e` : Edit configuration
+- `e` / `Alt+e` : Edit configuration
 - `r` : Refresh
 """
 
