@@ -51,6 +51,27 @@ def test_mv_extract_job_file_extracts_benign_zip(tmp_path):
         patcher.stop()
 
 
+def test_mv_extract_job_file_ignores_bare_root_zip_entry(tmp_path):
+    """A zip member literally named '/' (a harmless top-level directory
+    entry some zip tools include) must not be flagged as a path-traversal
+    escape -- see the matching fix/test in lexiflow.base."""
+    zip_path = tmp_path / "job_with_root_entry.zip"
+    job_dir = tmp_path / "job_dir"
+    job_dir.mkdir()
+
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("/", "")
+        zf.writestr("audio.mp3", "fake audio content")
+
+    screen, patcher = _screen_with_mock_app()
+    try:
+        screen.mv_extract_job_file(zip_path, job_dir)
+        assert (job_dir / "audio.mp3").exists()
+        screen.app.notify.assert_not_called()
+    finally:
+        patcher.stop()
+
+
 def test_mv_extract_job_file_copies_non_zip(tmp_path):
     src_file = tmp_path / "audio.mp3"
     src_file.write_text("fake audio content")

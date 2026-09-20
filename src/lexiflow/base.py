@@ -282,6 +282,15 @@ class Transcriptor:
                 job_dir = Path(job_dir).resolve()
                 with zipfile.ZipFile(job_file) as zf:
                     for member in zf.namelist():
+                        if member in ("", "/"):
+                            # Harmless bare root-directory entry some zip
+                            # tools include. pathlib's `job_dir / member`
+                            # would discard job_dir entirely for a
+                            # leading "/" (treating it as an absolute
+                            # path override) and resolve to the
+                            # filesystem root, which is not an actual
+                            # traversal attempt -- just nothing to check.
+                            continue
                         target = (job_dir / member).resolve()
                         if (
                             job_dir not in target.parents

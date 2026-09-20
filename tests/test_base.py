@@ -259,6 +259,28 @@ def test_mv_extract_job_file_rejects_path_traversal(
     assert "escapes target directory" in caplog.text
 
 
+def test_mv_extract_job_file_ignores_bare_root_zip_entry(
+    transcriptor, test_base_dir, caplog
+):
+    """A zip member literally named '/' (a harmless top-level directory
+    entry some zip tools include) must not be flagged as a path-traversal
+    escape -- pathlib's `job_dir / "/"` discards job_dir entirely and
+    resolves to the filesystem root, which is what previously tripped the
+    guard's `job_dir not in target.parents` check as a false positive."""
+    zip_path = test_base_dir / "benign_with_root_entry.zip"
+    job_dir = test_base_dir / "job_dir_root_entry"
+    job_dir.mkdir(exist_ok=True)
+
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("/", "")
+        zf.writestr("audio.mp3", "fake audio content")
+
+    transcriptor.mv_extract_job_file(zip_path, job_dir)
+
+    assert "escapes target directory" not in caplog.text
+    assert (job_dir / "audio.mp3").exists()
+
+
 def test_select_job_template(transcriptor, test_base_dir):
     """Test job template selection"""
     client_name = "TemplateTest"
