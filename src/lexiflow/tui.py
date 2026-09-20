@@ -33,6 +33,7 @@ from lexiflow.utils import (
     TEMPLATE_MAPPING,
     extract_date_due,
     extract_job_number,
+    format_status_badge,
     get_media_duration,
     get_media_files,
     invoice_template_themes,
@@ -75,6 +76,22 @@ def _dt_to_lower(val):
     return str(val).lower() if val is not None else ""
 
 
+_STATUS_MARKUP_TAG_RE = re.compile(r"\[/?[a-zA-Z]+\]")
+_STATUS_ICON_PREFIX_RE = re.compile(r"^[✓…✗•]\s*")
+
+
+def _dt_status_sort_key(val) -> str:
+    """Sort key for status/transcription columns after format_status_badge()
+    wraps their plain text in Rich markup + an icon prefix -- strips both
+    back off so sorting matches the underlying status text exactly as it
+    did before the badge formatting was added."""
+    if val is None:
+        return ""
+    text = _STATUS_MARKUP_TAG_RE.sub("", str(val))
+    text = _STATUS_ICON_PREFIX_RE.sub("", text)
+    return text.lower()
+
+
 def _currency_suffix(config, rate=None) -> str:
     return f" ({display_currency_code(config, rate)})"
 
@@ -111,12 +128,13 @@ def sort_datatable_by_column(
         "id": _dt_to_int,
         "job number": _dt_to_lower,
         "client": _dt_to_lower,
-        "status": _dt_to_lower,
+        "status": _dt_status_sort_key,
         "date due": _to_date,
         "job type": _dt_to_lower,
         "quantity": _dt_to_float,
         "rate": _dt_to_float,
         "amount": _dt_to_float,
+        "transcription": _dt_status_sort_key,
     }
 
     key_fn = key_map.get(column_key, _dt_to_lower)
@@ -647,7 +665,7 @@ class Dashboard(BaseTable):
                 str(job.get("id")),
                 job.get("job_number"),
                 client_name,
-                job.get("status"),
+                format_status_badge(job.get("status")),
                 job.get("date_due"),
                 job.get("job_type"),
                 str(job.get("quantity")),
@@ -663,7 +681,7 @@ class Dashboard(BaseTable):
                     rate=rate,
                     show_currency=False,
                 ),
-                job.get("transcription_status") or "-",
+                format_status_badge(job.get("transcription_status")),
                 key=str(idx),
             )
 
@@ -825,7 +843,7 @@ class JobsTable(BaseTable):
                 str(job.get("id")),
                 job.get("job_number"),
                 client_name,
-                job.get("status"),
+                format_status_badge(job.get("status")),
                 job.get("date_due"),
                 job.get("job_type"),
                 str(job.get("quantity")),
@@ -835,7 +853,7 @@ class JobsTable(BaseTable):
                     rate=rate,
                     show_currency=False,
                 ),
-                job.get("transcription_status") or "-",
+                format_status_badge(job.get("transcription_status")),
                 key=str(idx),
             )
 
