@@ -595,9 +595,11 @@ class Dashboard(BaseTable):
         yield Static(id="pending-jobs-selection-info")
         with Container(id="dashboard-controls", classes="panel-controls"):
             with Horizontal(classes="button-bar"):
-                yield Button("Add Job", id="dash-add-job")
+                yield Button("Add Job", variant="primary", id="dash-add-job")
                 yield Button("Edit Job", id="dash-edit-job")
-                yield Button("Transcribe", id="dash-transcribe-job")
+                yield Button(
+                    "Transcribe", variant="success", id="dash-transcribe-job"
+                )
                 yield Button("Refresh", id="dash-refresh")
 
     def get_table(self) -> DataTable:
@@ -761,11 +763,17 @@ class JobsTable(BaseTable):
         yield Static(id="jobs-selection-info")
         with Container(id="jobs-controls", classes="panel-controls"):
             with Horizontal(classes="button-bar"):
-                yield Button("Add Job", id="jobs-add-job")
+                yield Button("Add Job", variant="primary", id="jobs-add-job")
                 yield Button("Edit Job", id="jobs-edit-job")
-                yield Button("Transcribe", id="jobs-transcribe-job")
+                yield Button(
+                    "Transcribe", variant="success", id="jobs-transcribe-job"
+                )
                 yield Button("Refresh", id="jobs-refresh")
-                yield Button("Generate Invoice", id="jobs-generate-invoice")
+                yield Button(
+                    "Generate Invoice",
+                    variant="success",
+                    id="jobs-generate-invoice",
+                )
 
     def on_mount(self):
         self.refresh_table()
@@ -2036,9 +2044,11 @@ class Clients(BaseTable):
         yield Static(id="clients-selection-info")
         with Container(id="clients-controls", classes="panel-controls"):
             with Horizontal(classes="button-bar"):
-                yield Button("Add Client", id="clients-add")
+                yield Button("Add Client", variant="primary", id="clients-add")
                 yield Button("Edit Client", id="clients-edit")
-                yield Button("Delete Client", id="clients-delete")
+                yield Button(
+                    "Delete Client", variant="error", id="clients-delete"
+                )
                 yield Button("Refresh", id="clients-refresh")
 
     def on_mount(self):
@@ -2282,7 +2292,7 @@ class Rates(BaseTable):
         yield Static(id="rates-selection-info")
         with Container(id="rates-controls", classes="panel-controls"):
             with Horizontal(classes="button-bar"):
-                yield Button("Edit Rate", id="rates-edit")
+                yield Button("Edit Rate", variant="primary", id="rates-edit")
                 yield Button("Refresh", id="rates-refresh")
 
     def on_mount(self):
@@ -2482,13 +2492,19 @@ class Invoice(Container):
 
                     with Horizontal(classes="button-bar"):
                         yield Button(
-                            "Generate Invoice", id="generate-invoice"
+                            "Generate Invoice",
+                            variant="primary",
+                            id="generate-invoice",
                         )
                         yield Button(
                             "Preview Markdown", id="preview-markdown"
                         )
-                        yield Button("Save as PDF", id="save-pdf")
-                        yield Button("Save as CSV", id="save-csv")
+                        yield Button(
+                            "Save as PDF", variant="success", id="save-pdf"
+                        )
+                        yield Button(
+                            "Save as CSV", variant="success", id="save-csv"
+                        )
 
                 # Bottom results pane (no switcher; we toggle visibility)
                 with Container(id="invoice-results"):
@@ -2501,7 +2517,9 @@ class Invoice(Container):
                 yield Label("Select Deposit Period", classes="title")
                 yield DataTable(id="invoice-cutoffs-table")
                 with Horizontal(classes="button-bar"):
-                    yield Button("Add Cutoffs", id="cutoffs-add")
+                    yield Button(
+                        "Add Cutoffs", variant="primary", id="cutoffs-add"
+                    )
 
     def on_mount(self):
         self.load_clients()
@@ -2903,7 +2921,9 @@ class Profile(Container):
         yield Static(id="profile-display")
         with Container(id="profile-controls", classes="panel-controls"):
             with Horizontal(classes="button-bar"):
-                yield Button("Edit Profile", id="edit-profile")
+                yield Button(
+                    "Edit Profile", variant="primary", id="edit-profile"
+                )
                 yield Button("Refresh", id="profile-refresh")
 
     def on_mount(self):
@@ -3091,13 +3111,17 @@ class Configuration(Container):
             yield Label("Configuration & Settings", classes="title")
             yield Static(id="config-display")
             with Horizontal(classes="button-bar"):
-                yield Button("Edit Config", id="edit-config")
+                yield Button(
+                    "Edit Config", variant="primary", id="edit-config"
+                )
 
             yield Label("Data Management", classes="title")
             with Horizontal(classes="button-bar"):
                 yield Button("Backup Database", id="backup-db")
                 yield Button("Restore Database", id="restore-db")
-                yield Button("Purge Job Files", id="purge-jobs")
+                yield Button(
+                    "Purge Job Files", variant="error", id="purge-jobs"
+                )
                 yield Button("About", id="about-app")
 
     def on_mount(self):

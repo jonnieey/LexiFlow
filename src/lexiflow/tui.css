@@ -1,3 +1,10 @@
+/* Design tokens: semantic aliases over the active theme's palette, so
+   status/state styling reads by intent instead of raw color names. */
+$status-success: $success;
+$status-progress: $warning;
+$status-error: $error;
+$status-neutral: $text-secondary;
+
 /* Base element styles */
 Screen {
     background: $surface;
@@ -10,6 +17,12 @@ DataTable {
     height: 1fr;
     scrollbar-size: 1 1;
     scrollbar-color: $panel;
+}
+DataTable:focus {
+    outline: solid $accent;
+}
+ListView:focus {
+    outline: solid $accent;
 }
 Button {
     height: auto;
@@ -60,12 +73,12 @@ Button {
 }
 
 .button-bar > Button {
-    margin: 1;
-    min-width: 18;
-    border: none;
+    margin: 0 1;
+    min-width: 16;
     height: auto;
-    background: orange;
-    color: $text;
+}
+.button-bar > Button:focus {
+    text-style: bold reverse;
 }
 .summary-title {
     text-style: bold;
