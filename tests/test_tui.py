@@ -1,10 +1,11 @@
 import asyncio
+import json
 import zipfile
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
-from lexiflow.tui import AddJobScreen, TranscriptionScreen
+from lexiflow.tui import AddJobScreen, DocumentProcessingScreen, TranscriptionScreen
 
 
 def _screen_with_mock_app(screen=None):
@@ -297,5 +298,152 @@ def test_format_info_omits_error_line_when_none():
     try:
         info = screen._format_info()
         assert "Last error" not in info
+    finally:
+        patcher.stop()
+
+
+# -------- DocumentProcessingScreen --------
+
+
+def _document_processing_screen_with_mock_app(job_data):
+    screen, patcher = _screen_with_mock_app(DocumentProcessingScreen(job_data))
+    screen.app.transcriptor = AsyncMock()
+    return screen, patcher
+
+
+def test_doc_do_extract_saves_metadata_json(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        notice = tmp_path / "notice.pdf"
+        pbs = tmp_path / "pbs.pdf"
+        with patch("lexiflow.tui.MetadataExtractor") as mock_extractor_cls:
+            mock_extractor_cls.return_value.extract_all.return_value = {
+                "WITNESS_NAME": "Jane Doe"
+            }
+            metadata = asyncio.run(screen.do_extract(notice, pbs))
+
+        assert metadata == {"WITNESS_NAME": "Jane Doe"}
+        mock_extractor_cls.return_value.extract_all.assert_called_once_with(
+            notice, pbs
+        )
+        metadata_path = tmp_path / "metadata.json"
+        assert metadata_path.exists()
+        assert json.loads(metadata_path.read_text()) == {
+            "WITNESS_NAME": "Jane Doe"
+        }
+    finally:
+        patcher.stop()
+
+
+def test_doc_do_fill_reads_existing_metadata_json(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    (tmp_path / "metadata.json").write_text(json.dumps({"A": "1"}))
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        template = tmp_path / "template.docx"
+        with patch("lexiflow.tui.fill_template") as mock_fill:
+            mock_fill.return_value = tmp_path / "template_filled.docx"
+            result = screen.do_fill(template)
+
+        mock_fill.assert_called_once_with(template, {"A": "1"}, None)
+        assert result == tmp_path / "template_filled.docx"
+    finally:
+        patcher.stop()
+
+
+def test_doc_do_fill_raises_without_metadata_json(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        template = tmp_path / "template.docx"
+        with pytest.raises(FileNotFoundError):
+            screen.do_fill(template)
+    finally:
+        patcher.stop()
+
+
+def test_doc_do_process_extracts_fills_and_submits(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        screen.app.transcriptor.submit_transcription.return_value = "ext-123"
+        notice = tmp_path / "notice.pdf"
+        pbs = tmp_path / "pbs.pdf"
+        template = tmp_path / "template.docx"
+        with patch("lexiflow.tui.MetadataExtractor") as mock_extractor_cls:
+            mock_extractor_cls.return_value.extract_all.return_value = {
+                "WITNESS_NAME": "Jane Doe"
+            }
+            with patch("lexiflow.tui.fill_template") as mock_fill:
+                mock_fill.return_value = tmp_path / "template_filled.docx"
+                external_id = asyncio.run(
+                    screen.do_process(notice, pbs, template, "revai")
+                )
+
+        assert external_id == "ext-123"
+        mock_fill.assert_called_once_with(
+            template, {"WITNESS_NAME": "Jane Doe"}, None
+        )
+        screen.app.transcriptor.submit_transcription.assert_awaited_once_with(
+            5, "revai", additional_vocabulary=["Jane", "Doe"]
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_do_process_without_template_skips_fill(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        screen.app.transcriptor.submit_transcription.return_value = "ext-123"
+        notice = tmp_path / "notice.pdf"
+        pbs = tmp_path / "pbs.pdf"
+        with patch("lexiflow.tui.MetadataExtractor") as mock_extractor_cls:
+            mock_extractor_cls.return_value.extract_all.return_value = {}
+            with patch("lexiflow.tui.fill_template") as mock_fill:
+                asyncio.run(screen.do_process(notice, pbs, None, "revai"))
+
+        mock_fill.assert_not_called()
+    finally:
+        patcher.stop()
+
+
+def test_doc_format_info_no_metadata(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("x")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        assert "No metadata.json" in screen._format_info()
+    finally:
+        patcher.stop()
+
+
+def test_doc_format_info_with_metadata(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("x")
+    (tmp_path / "metadata.json").write_text("{}")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        assert "metadata.json found" in screen._format_info()
     finally:
         patcher.stop()

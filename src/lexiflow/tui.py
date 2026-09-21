@@ -1,3 +1,5 @@
+import asyncio
+import json
 import logging
 import re
 import shutil
@@ -29,6 +31,7 @@ from textual.widgets import (
 )
 
 from lexiflow.base import Transcriptor
+from lexiflow.extractor import MetadataExtractor, fill_template
 from lexiflow.utils import (
     TEMPLATE_MAPPING,
     extract_date_due,
@@ -37,7 +40,9 @@ from lexiflow.utils import (
     get_media_duration,
     get_media_files,
     invoice_template_themes,
+    list_candidate_files,
     parse_conditions,
+    process_metadata_to_vocabulary,
     round_up,
     sc,
 )
@@ -1207,6 +1212,208 @@ class TranscriptionScreen(VimModalMixin, ModalScreen):
         self.app.notify(f"Transcript saved to {transcript_path}")
 
     @on(Button.Pressed, "#transcription-close")
+    def on_close_pressed(self):
+        self.dismiss(True)
+
+    def action_escape_dismiss(self) -> None:
+        self.dismiss(True)
+
+
+class DocumentProcessingScreen(VimModalMixin, ModalScreen):
+    """Extract metadata / fill a template / process (extract+fill+submit)
+    for a job, picking notice/PBS/template files from the job's own
+    directory instead of requiring the user to type paths -- the TUI
+    equivalent of the CLI's extract/fill/process -j <id> flow."""
+
+    TRANSCRIPTION_PROVIDERS = TranscriptionScreen.TRANSCRIPTION_PROVIDERS
+
+    def __init__(self, job_data: Dict):
+        super().__init__()
+        self.job_data = dict(job_data)
+
+    def _job_dir(self) -> Path:
+        return Path(self.job_data["job_path"]).parent
+
+    def compose(self) -> ComposeResult:
+        with Container(id="document-processing-screen"):
+            yield Label(
+                f"Process Documents: {self.job_data.get('job_number', '')}",
+                classes="transcription-title",
+            )
+            yield Static(id="doc-info")
+            yield Label("Notice PDF:")
+            yield Select([], id="doc-notice", prompt="Select notice PDF")
+            yield Label("PBS PDF:")
+            yield Select([], id="doc-pbs", prompt="Select PBS PDF")
+            yield Label("Template (optional):")
+            yield Select([], id="doc-template", prompt="Select template")
+            yield Label("Provider (for Process):")
+            yield Select(
+                self.TRANSCRIPTION_PROVIDERS,
+                id="doc-provider",
+                prompt="Select a provider",
+            )
+            with Horizontal(id="doc-actions"):
+                yield Button("Extract", id="doc-extract-btn")
+                yield Button("Fill Template", id="doc-fill-btn")
+                yield Button(
+                    "Process", variant="success", id="doc-process-btn"
+                )
+                yield Button("Close", variant="default", id="doc-close")
+
+    def on_mount(self):
+        self._populate_pdf_selects()
+        self._populate_template_select()
+        self._update_info_display()
+
+    def _populate_pdf_selects(self, exclude_notice: Optional[Path] = None):
+        job_dir = self._job_dir()
+        pdf_files = list_candidate_files(job_dir, [".pdf"])
+        pdf_options = [(p.name, str(p)) for p in pdf_files]
+        self.query_one("#doc-notice", Select).set_options(pdf_options)
+
+        exclude = {exclude_notice} if exclude_notice else set()
+        pbs_files = list_candidate_files(job_dir, [".pdf"], exclude=exclude)
+        pbs_options = [(p.name, str(p)) for p in pbs_files]
+        self.query_one("#doc-pbs", Select).set_options(pbs_options)
+
+    def _populate_template_select(self):
+        job_dir = self._job_dir()
+        docx_files = list_candidate_files(job_dir, [".docx"])
+        docx_options = [(p.name, str(p)) for p in docx_files]
+        self.query_one("#doc-template", Select).set_options(docx_options)
+
+    @on(Select.Changed, "#doc-notice")
+    def on_notice_changed(self, event: Select.Changed):
+        notice = None
+        if event.value and event.value is not Select.BLANK:
+            notice = Path(event.value)
+        job_dir = self._job_dir()
+        exclude = {notice} if notice else set()
+        pbs_files = list_candidate_files(job_dir, [".pdf"], exclude=exclude)
+        pbs_options = [(p.name, str(p)) for p in pbs_files]
+        self.query_one("#doc-pbs", Select).set_options(pbs_options)
+
+    def _format_info(self) -> str:
+        job_dir = self._job_dir()
+        metadata_path = job_dir / "metadata.json"
+        if metadata_path.exists():
+            return f"metadata.json found in {job_dir}"
+        return "No metadata.json yet -- run Extract first."
+
+    def _update_info_display(self):
+        self.query_one("#doc-info", Static).update(self._format_info())
+
+    def _selected_path(self, selector: str) -> Optional[Path]:
+        value = self.query_one(selector, Select).value
+        if not value or value is Select.BLANK:
+            return None
+        return Path(value)
+
+    async def do_extract(self, notice: Path, pbs: Path) -> Dict:
+        """Extract metadata for this job. Raises on error.
+
+        Kept free of widget access so it's directly testable.
+        """
+        extractor = MetadataExtractor()
+        # MetadataExtractor.extract_all() makes a blocking OpenAI call;
+        # unlike the CLI (a one-shot process), the TUI runs its own
+        # asyncio event loop for rendering, so this must go through a
+        # thread or it freezes the whole UI while extracting.
+        metadata = await asyncio.to_thread(extractor.extract_all, notice, pbs)
+        metadata_path = self._job_dir() / "metadata.json"
+        metadata_path.write_text(json.dumps(metadata, indent=4))
+        return metadata
+
+    def do_fill(self, template: Path) -> Path:
+        """Fill a template using this job's already-extracted metadata.
+
+        Raises FileNotFoundError if metadata.json doesn't exist yet.
+        """
+        metadata_path = self._job_dir() / "metadata.json"
+        if not metadata_path.exists():
+            raise FileNotFoundError(
+                f"No metadata.json found in {self._job_dir()} -- run "
+                "Extract first."
+            )
+        metadata = json.loads(metadata_path.read_text())
+        return fill_template(template, metadata, None)
+
+    async def do_process(
+        self,
+        notice: Path,
+        pbs: Path,
+        template: Optional[Path],
+        provider: str,
+    ) -> str:
+        """Extract, optionally fill a template, then submit for
+        transcription. Raises on error."""
+        metadata = await self.do_extract(notice, pbs)
+        if template:
+            await asyncio.to_thread(fill_template, template, metadata, None)
+        vocabulary = process_metadata_to_vocabulary(metadata)
+        job_id = self.job_data.get("id")
+        return await self.app.transcriptor.submit_transcription(
+            job_id, provider, additional_vocabulary=vocabulary
+        )
+
+    @on(Button.Pressed, "#doc-extract-btn")
+    async def on_extract_pressed(self):
+        notice = self._selected_path("#doc-notice")
+        pbs = self._selected_path("#doc-pbs")
+        if notice is None or pbs is None:
+            self.app.notify(
+                "Select both a notice and a PBS file.", severity="error"
+            )
+            return
+        try:
+            await self.do_extract(notice, pbs)
+        except Exception as e:
+            self.app.notify(
+                f"Error extracting metadata: {e}", severity="error"
+            )
+            return
+        self._update_info_display()
+        self.app.notify("Metadata extracted and saved.")
+
+    @on(Button.Pressed, "#doc-fill-btn")
+    def on_fill_pressed(self):
+        template = self._selected_path("#doc-template")
+        if template is None:
+            self.app.notify("Select a template.", severity="error")
+            return
+        try:
+            result_path = self.do_fill(template)
+        except Exception as e:
+            self.app.notify(f"Error filling template: {e}", severity="error")
+            return
+        self.app.notify(f"Filled template saved to {result_path}")
+
+    @on(Button.Pressed, "#doc-process-btn")
+    async def on_process_pressed(self):
+        notice = self._selected_path("#doc-notice")
+        pbs = self._selected_path("#doc-pbs")
+        template = self._selected_path("#doc-template")
+        provider = self.query_one("#doc-provider", Select).value
+        if notice is None or pbs is None:
+            self.app.notify(
+                "Select both a notice and a PBS file.", severity="error"
+            )
+            return
+        if not provider or provider is Select.BLANK:
+            self.app.notify("Select a provider.", severity="error")
+            return
+        try:
+            external_id = await self.do_process(
+                notice, pbs, template, provider
+            )
+        except Exception as e:
+            self.app.notify(f"Error processing: {e}", severity="error")
+            return
+        self._update_info_display()
+        self.app.notify(f"Submitted to {provider}: {external_id}")
+
+    @on(Button.Pressed, "#doc-close")
     def on_close_pressed(self):
         self.dismiss(True)
 
