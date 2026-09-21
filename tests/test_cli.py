@@ -1013,6 +1013,119 @@ def test_do_fill_error(cli_app, tmp_path):
     cli_app.poutput.assert_called_with("Error filling template: boom")
 
 
+def test_do_fill_interactive_picks_template_and_reuses_metadata_json(
+    cli_app, mock_transcriptor, tmp_path
+):
+    template = tmp_path / "template.docx"
+    template.touch()
+    metadata_path = tmp_path / "metadata.json"
+    metadata_path.write_text('{"WITNESS_NAME": "Jane Doe"}')
+    mock_transcriptor.return_value.api.get_jobs.return_value = [
+        {"id": 739, "job_path": str(tmp_path / "audio.mp3")}
+    ]
+
+    with patch("lexiflow.cli.fill_template") as mock_fill:
+        mock_fill.return_value = tmp_path / "template_filled.docx"
+        with patch("lexiflow.cli.prompt", side_effect=["1", "y"]):
+            cli_app.onecmd("fill -j 739")
+
+    mock_fill.assert_called_once_with(
+        template, {"WITNESS_NAME": "Jane Doe"}, None
+    )
+
+
+def test_do_fill_interactive_declines_reuse_picks_notice_and_pbs(
+    cli_app, mock_transcriptor, tmp_path
+):
+    template = tmp_path / "template.docx"
+    template.touch()
+    notice = tmp_path / "notice.pdf"
+    pbs = tmp_path / "pbs.pdf"
+    template.touch()
+    notice.touch()
+    pbs.touch()
+    (tmp_path / "metadata.json").write_text("{}")
+    mock_transcriptor.return_value.api.get_jobs.return_value = [
+        {"id": 739, "job_path": str(tmp_path / "audio.mp3")}
+    ]
+
+    with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
+        mock_extractor_cls.return_value.extract_all.return_value = {
+            "WITNESS_NAME": "Jane Doe"
+        }
+        with patch("lexiflow.cli.fill_template") as mock_fill:
+            mock_fill.return_value = tmp_path / "template_filled.docx"
+            with patch(
+                "lexiflow.cli.prompt", side_effect=["1", "n", "1", "1"]
+            ):
+                cli_app.onecmd("fill -j 739")
+
+    mock_extractor_cls.return_value.extract_all.assert_called_once_with(
+        notice, pbs
+    )
+    mock_fill.assert_called_once_with(
+        template, {"WITNESS_NAME": "Jane Doe"}, None
+    )
+
+
+def test_do_fill_interactive_no_metadata_json_skips_reuse_prompt(
+    cli_app, mock_transcriptor, tmp_path
+):
+    template = tmp_path / "template.docx"
+    notice = tmp_path / "notice.pdf"
+    pbs = tmp_path / "pbs.pdf"
+    template.touch()
+    notice.touch()
+    pbs.touch()
+    mock_transcriptor.return_value.api.get_jobs.return_value = [
+        {"id": 739, "job_path": str(tmp_path / "audio.mp3")}
+    ]
+
+    with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
+        mock_extractor_cls.return_value.extract_all.return_value = {"A": "1"}
+        with patch("lexiflow.cli.fill_template") as mock_fill:
+            mock_fill.return_value = tmp_path / "template_filled.docx"
+            with patch(
+                "lexiflow.cli.prompt", side_effect=["1", "1", "1"]
+            ):
+                cli_app.onecmd("fill -j 739")
+
+    mock_extractor_cls.return_value.extract_all.assert_called_once_with(
+        notice, pbs
+    )
+
+
+def test_do_fill_bare_prompts_for_job_id_first(
+    cli_app, mock_transcriptor, tmp_path
+):
+    template = tmp_path / "template.docx"
+    template.touch()
+    (tmp_path / "metadata.json").write_text("{}")
+    mock_transcriptor.return_value.get_job_directory.return_value = tmp_path
+    mock_transcriptor.return_value.api.get_jobs.return_value = [
+        {"id": 739, "job_path": str(tmp_path / "audio.mp3")}
+    ]
+
+    with patch("lexiflow.cli.fill_template") as mock_fill:
+        mock_fill.return_value = tmp_path / "template_filled.docx"
+        with patch(
+            "lexiflow.cli.prompt", side_effect=["739", "1", "y"]
+        ):
+            cli_app.onecmd("fill")
+
+    mock_fill.assert_called_once_with(template, {}, None)
+
+
+def test_do_fill_no_template_and_no_job_context_errors(cli_app, tmp_path):
+    metadata_file = tmp_path / "metadata.json"
+    metadata_file.write_text("{}")
+    cli_app.poutput = MagicMock()
+
+    cli_app.onecmd(f"fill -m {metadata_file}")
+
+    cli_app.poutput.assert_called_with("Error: -t/--template is required")
+
+
 def _process_paths(tmp_path):
     notice = tmp_path / "notice.pdf"
     pbs = tmp_path / "pbs.pdf"

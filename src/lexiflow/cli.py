@@ -427,7 +427,13 @@ fill_parser = base_subparsers.add_parser(
     "fill", help="fill a docx template with metadata"
 )
 fill_parser.add_argument(
-    "-t", "--template", type=Path, required=True, help="Path to docx template"
+    "-j",
+    "--job_id",
+    type=int,
+    help="Job ID -- resolves template/metadata interactively from the job's directory if not given explicitly",
+)
+fill_parser.add_argument(
+    "-t", "--template", type=Path, help="Path to docx template"
 )
 fill_parser.add_argument(
     "-o",
@@ -435,7 +441,7 @@ fill_parser.add_argument(
     type=Path,
     help="Output path (default: <template>_filled.docx)",
 )
-fill_group = fill_parser.add_mutually_exclusive_group(required=True)
+fill_group = fill_parser.add_mutually_exclusive_group(required=False)
 fill_group.add_argument(
     "-m", "--metadata", type=Path, help="Path to metadata JSON file"
 )
@@ -1695,25 +1701,76 @@ class TranscriptorCMD(cmd2.Cmd):
             self.do_help("extract")
 
     def fill(self, args: Namespace):
+        template = args.template
+        metadata = None
+
         if args.metadata:
             if not args.metadata.exists():
                 self.poutput(f"Metadata file not found: {args.metadata}")
                 return
             metadata = json.loads(args.metadata.read_text())
-        else:
+        elif args.notice:
             if not args.pbs:
                 self.poutput(
                     "Error: -p/--pbs is required when using -n/--notice"
                 )
                 return
             metadata = self.extract(
-                Namespace(notice=args.notice, pbs=args.pbs, output=None)
+                Namespace(
+                    job_id=None, notice=args.notice, pbs=args.pbs, output=None
+                )
             )
             if metadata is None:
                 return
+        else:
+            context = self._resolve_job_context(args)
+            if context is None:
+                return
+            _, job_dir = context
+
+            if template is None:
+                template = self._prompt_pick_file(
+                    job_dir, [".docx"], "template"
+                )
+                if template is None:
+                    return
+
+            metadata_path = job_dir / "metadata.json"
+            if metadata_path.exists():
+                message = [
+                    (
+                        "class:prompt",
+                        f"Found existing metadata.json in {job_dir}, use it? (y/n):",
+                    ),
+                    ("class:space", "  "),
+                ]
+                reuse = prompt(
+                    message, style=style, validator=yes_no_validator
+                )
+                if reuse.lower().startswith("y"):
+                    metadata = json.loads(metadata_path.read_text())
+
+            if metadata is None:
+                notice = self._prompt_pick_file(job_dir, [".pdf"], "notice")
+                if notice is None:
+                    return
+                pbs = self._prompt_pick_file(
+                    job_dir, [".pdf"], "PBS", exclude={notice}
+                )
+                if pbs is None:
+                    return
+                metadata = self.extract(
+                    Namespace(job_id=None, notice=notice, pbs=pbs, output=None)
+                )
+                if metadata is None:
+                    return
+
+        if template is None:
+            self.poutput("Error: -t/--template is required")
+            return
 
         try:
-            result_path = fill_template(args.template, metadata, args.output)
+            result_path = fill_template(template, metadata, args.output)
         except Exception as e:
             self.poutput(f"Error filling template: {e}")
             return
