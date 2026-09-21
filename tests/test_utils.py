@@ -16,6 +16,7 @@ from lexiflow.utils.docx_utils import (
 )
 from lexiflow.utils.filesystem import (
     get_media_files,
+    list_candidate_files,
     mkdirp,
     next_non_existent_file,
     touch,
@@ -237,6 +238,85 @@ class TestMediaOperations:
     def test_seconds_to_minutes(self):
         assert seconds_to_minutes(60) == 1.0
         assert seconds_to_minutes(90) == 1.5
+
+
+class TestListCandidateFiles:
+    def test_filters_by_extension(self, tmp_path):
+        pdf1 = tmp_path / "notice.pdf"
+        pdf2 = tmp_path / "pbs.pdf"
+        docx = tmp_path / "template.docx"
+        pdf1.touch()
+        pdf2.touch()
+        docx.touch()
+
+        result = list_candidate_files(tmp_path, [".pdf"])
+
+        assert result == [pdf1, pdf2]
+
+    def test_case_insensitive_extension_match(self, tmp_path):
+        pdf = tmp_path / "notice.PDF"
+        pdf.touch()
+
+        result = list_candidate_files(tmp_path, [".pdf"])
+
+        assert result == [pdf]
+
+    def test_sorted_by_name(self, tmp_path):
+        (tmp_path / "z.pdf").touch()
+        (tmp_path / "a.pdf").touch()
+
+        result = list_candidate_files(tmp_path, [".pdf"])
+
+        assert [p.name for p in result] == ["a.pdf", "z.pdf"]
+
+    def test_excludes_given_paths(self, tmp_path):
+        pdf1 = tmp_path / "notice.pdf"
+        pdf2 = tmp_path / "pbs.pdf"
+        pdf1.touch()
+        pdf2.touch()
+
+        result = list_candidate_files(tmp_path, [".pdf"], exclude={pdf1})
+
+        assert result == [pdf2]
+
+    def test_non_recursive(self, tmp_path):
+        nested_dir = tmp_path / "subdir"
+        nested_dir.mkdir()
+        (nested_dir / "nested.pdf").touch()
+        top_level = tmp_path / "top.pdf"
+        top_level.touch()
+
+        result = list_candidate_files(tmp_path, [".pdf"])
+
+        assert result == [top_level]
+
+    def test_ignores_directories_matching_extension(self, tmp_path):
+        (tmp_path / "not_a_file.pdf").mkdir()
+        real_file = tmp_path / "real.pdf"
+        real_file.touch()
+
+        result = list_candidate_files(tmp_path, [".pdf"])
+
+        assert result == [real_file]
+
+    def test_no_matches_returns_empty_list(self, tmp_path):
+        (tmp_path / "notice.txt").touch()
+
+        result = list_candidate_files(tmp_path, [".pdf"])
+
+        assert result == []
+
+    def test_multiple_extensions(self, tmp_path):
+        pdf = tmp_path / "notice.pdf"
+        docx = tmp_path / "template.docx"
+        txt = tmp_path / "readme.txt"
+        pdf.touch()
+        docx.touch()
+        txt.touch()
+
+        result = list_candidate_files(tmp_path, [".pdf", ".docx"])
+
+        assert result == [pdf, docx]
         assert seconds_to_minutes(95) == 2.0  # Rounds up
 
     def test_next_non_existent_file(self, tmp_file):

@@ -1,6 +1,6 @@
 import mimetypes
 from pathlib import Path
-from typing import Generator
+from typing import Generator, Iterable, List, Set
 
 
 def touch(file_paths: list[Path | str]) -> None:
@@ -47,6 +47,32 @@ def get_media_files(directory: Path) -> Generator[Path, None, None]:
                 )
             ):
                 yield file
+
+
+def list_candidate_files(
+    directory: Path,
+    extensions: Iterable[str],
+    exclude: Set[Path] = frozenset(),
+) -> List[Path]:
+    """
+    List files directly inside `directory` matching any of `extensions`
+    (case-insensitive), sorted by name, excluding any paths in `exclude`.
+    Non-recursive.
+
+    Arguments:
+        directory: Directory to list files from.
+        extensions: File extensions to match, e.g. [".pdf", ".docx"].
+        exclude: Paths to omit from the result (e.g. already-picked files).
+    """
+    lowered_extensions = {ext.lower() for ext in extensions}
+    matches = [
+        path
+        for path in directory.glob("*")
+        if path.is_file()
+        and path.suffix.lower() in lowered_extensions
+        and path not in exclude
+    ]
+    return sorted(matches, key=lambda p: p.name)
 
 
 def next_non_existent_file(filename: Path | str) -> Path:

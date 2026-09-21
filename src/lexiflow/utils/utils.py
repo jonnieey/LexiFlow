@@ -16,7 +16,13 @@ from .date_utils import (
     to_date_object,
 )
 from .docx_utils import extract_table_data_from_docx
-from .filesystem import get_media_files, mkdirp, next_non_existent_file, touch
+from .filesystem import (
+    get_media_files,
+    list_candidate_files,
+    mkdirp,
+    next_non_existent_file,
+    touch,
+)
 from .invoice_utils import (
     html_to_md,
     htmlstr_to_pdf,
