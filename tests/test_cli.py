@@ -1,3 +1,4 @@
+import json
 import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -808,3 +809,56 @@ def test_do_transcribe_no_subcommand(cli_app):
     cli_app.do_help = MagicMock()
     cli_app.onecmd("transcribe")
     cli_app.do_help.assert_called_with("transcribe")
+
+
+def test_do_extract_writes_metadata_json(cli_app, tmp_path):
+    notice = tmp_path / "notice.pdf"
+    pbs = tmp_path / "pbs.pdf"
+    notice.write_bytes(b"%PDF-1.4 fake")
+    pbs.write_bytes(b"%PDF-1.4 fake")
+    cli_app.poutput = MagicMock()
+
+    with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
+        mock_extractor_cls.return_value.extract_all.return_value = {
+            "WITNESS_NAME": "Jane Doe"
+        }
+        cli_app.onecmd(f"extract -n {notice} -p {pbs}")
+        mock_extractor_cls.return_value.extract_all.assert_called_once_with(
+            notice, pbs
+        )
+
+    output_path = tmp_path / "metadata.json"
+    assert output_path.exists()
+    assert json.loads(output_path.read_text()) == {"WITNESS_NAME": "Jane Doe"}
+    cli_app.poutput.assert_called_with(f"Metadata saved to {output_path}")
+
+
+def test_do_extract_explicit_output(cli_app, tmp_path):
+    notice = tmp_path / "notice.pdf"
+    pbs = tmp_path / "pbs.pdf"
+    notice.write_bytes(b"%PDF-1.4 fake")
+    pbs.write_bytes(b"%PDF-1.4 fake")
+    output = tmp_path / "custom" / "meta.json"
+
+    with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
+        mock_extractor_cls.return_value.extract_all.return_value = {"A": "1"}
+        cli_app.onecmd(f"extract -n {notice} -p {pbs} -o {output}")
+
+    assert output.exists()
+    assert json.loads(output.read_text()) == {"A": "1"}
+
+
+def test_do_extract_error(cli_app, tmp_path):
+    notice = tmp_path / "notice.pdf"
+    pbs = tmp_path / "pbs.pdf"
+    notice.write_bytes(b"%PDF-1.4 fake")
+    pbs.write_bytes(b"%PDF-1.4 fake")
+    cli_app.poutput = MagicMock()
+
+    with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
+        mock_extractor_cls.return_value.extract_all.side_effect = RuntimeError(
+            "boom"
+        )
+        cli_app.onecmd(f"extract -n {notice} -p {pbs}")
+
+    cli_app.poutput.assert_called_with("Error extracting metadata: boom")

@@ -14,6 +14,7 @@ from prompt_toolkit.styles import Style
 
 from lexiflow.base import Transcriptor
 from lexiflow.config import config_manager
+from lexiflow.extractor import MetadataExtractor
 from lexiflow.input_handler import CLIInputHandler
 from lexiflow.pdf import PDFRenderer
 from lexiflow.utils import (
@@ -395,6 +396,22 @@ config_migrate_parser.add_argument(
     "--env-file",
     type=Path,
     help="Path to .env file (default: auto-detect)",
+)
+
+extract_parser = base_subparsers.add_parser(
+    "extract", help="extract metadata from Notice and PBS PDFs"
+)
+extract_parser.add_argument(
+    "-n", "--notice", type=Path, required=True, help="Path to notice PDF"
+)
+extract_parser.add_argument(
+    "-p", "--pbs", type=Path, required=True, help="Path to PBS PDF"
+)
+extract_parser.add_argument(
+    "-o",
+    "--output",
+    type=Path,
+    help="Output path for metadata JSON (default: <pbs_dir>/metadata.json)",
 )
 
 
@@ -1565,6 +1582,35 @@ class TranscriptorCMD(cmd2.Cmd):
 
         else:
             self.do_help("config")
+
+    def extract(self, args: Namespace):
+        output_path = args.output or (args.pbs.parent / "metadata.json")
+        try:
+            extractor = MetadataExtractor()
+            metadata = extractor.extract_all(args.notice, args.pbs)
+        except Exception as e:
+            self.poutput(f"Error extracting metadata: {e}")
+            return None
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(metadata, indent=4))
+        self.poutput(f"Metadata saved to {output_path}")
+        return metadata
+
+    extract_parser.set_defaults(func=extract)
+
+    @cmd2.with_argparser(extract_parser)
+    def do_extract(self, args: Namespace):
+        """
+
+        Extract command help
+
+        """
+        if hasattr(args, "func"):
+            args.func(self, args)
+
+        else:
+            self.do_help("extract")
 
 
 def main(argv=None):
