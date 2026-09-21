@@ -1,0 +1,21 @@
+fix (important) — DONE (see PROGRESS.md "Phase 4")
+ - lexiflow does not contain all legatoflow functions, it only contains transcribe:
+    transcribe          Transcribe an audio/video file            [x] already ported (submit/status/fetch)
+    list                List recent jobs for a provider            [x] not re-ported — `show jobs -w provider=X` already covers this (LegatoFlow's own `list` isn't even backed by a real provider API, it just reads LegatoFlow's private JSON job store)
+    get                 Retrieve transcript for a job              [x] not re-ported — `transcribe fetch -j <id>` already covers this (provider isn't even needed as a separate arg, it's stored on the job row)
+    extract             Extract metadata from PBS and Notice PDFs  [x] ported — new `extract` command
+    fill                Fill a docx template with metadata         [x] ported — new `fill` command
+    process             Full workflow: extract metadata and transcribe  [x] ported — new `process` command
+    config              Manage configuration                       [x] already ported (show/set/migrate)
+    jobs                Manage transcription jobs                  [x] not re-ported — depends on LegatoFlow's own abandoned JSON job store (Phase 1 explicitly rejected reusing it); `show jobs` already provides equivalent filtering against the real DB
+    interactive         Interactive transcript fetcher              [ ] deferred — user confirmed skip for now
+
+ - port all of these capabilities to lexiflow
+
+features
+ - spawn file manager on job directory. Should be a separate process
+
+improvements
+ - run transcribe jobs in background on the cli
+
+
