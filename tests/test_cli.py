@@ -736,6 +736,32 @@ def test_do_transcribe_submit_error(cli_app, mock_transcriptor):
     )
 
 
+def test_do_transcribe_submit_prompts_for_provider_when_omitted(
+    cli_app, mock_transcriptor
+):
+    mock_transcriptor.return_value.submit_transcription.return_value = "ext-1"
+    cli_app.poutput = MagicMock()
+
+    with patch("lexiflow.cli.prompt", return_value="2"):
+        cli_app.onecmd("transcribe submit -j 5")
+
+    mock_transcriptor.return_value.submit_transcription.assert_called_once_with(
+        5, "revai", additional_vocabulary=None
+    )
+
+
+def test_do_transcribe_submit_invalid_provider_selection_stops(
+    cli_app, mock_transcriptor
+):
+    cli_app.poutput = MagicMock()
+
+    with patch("lexiflow.cli.prompt", return_value="99"):
+        cli_app.onecmd("transcribe submit -j 5")
+
+    mock_transcriptor.return_value.submit_transcription.assert_not_called()
+    cli_app.poutput.assert_called_with("Invalid selection.")
+
+
 def test_do_transcribe_status(cli_app, mock_transcriptor):
     mock_transcriptor.return_value.poll_transcription_status.return_value = (
         "transcribed"

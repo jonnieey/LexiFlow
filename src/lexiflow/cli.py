@@ -337,8 +337,7 @@ transcribe_submit_parser.add_argument(
     "-P",
     "--provider",
     choices=TRANSCRIPTION_PROVIDERS,
-    required=True,
-    help="Transcription provider",
+    help="Transcription provider (prompted interactively if omitted)",
 )
 transcribe_submit_parser.add_argument(
     "--vocabulary",
@@ -1529,6 +1528,12 @@ class TranscriptorCMD(cmd2.Cmd):
             self.poutput(f"Error restoring backup: {e}")
 
     def transcribe_submit(self, args: Namespace):
+        provider = args.provider
+        if provider is None:
+            provider = self._prompt_pick_provider()
+            if provider is None:
+                return
+
         vocabulary = None
         if args.vocabulary:
             vocabulary = [
@@ -1540,12 +1545,12 @@ class TranscriptorCMD(cmd2.Cmd):
             external_id = asyncio.run(
                 self.app.submit_transcription(
                     args.job_id,
-                    args.provider,
+                    provider,
                     additional_vocabulary=vocabulary,
                 )
             )
             self.poutput(
-                f"Submitted job {args.job_id} to {args.provider}: {external_id}"
+                f"Submitted job {args.job_id} to {provider}: {external_id}"
             )
         except (ValueError, FileNotFoundError) as e:
             self.poutput(f"Error: {e}")
