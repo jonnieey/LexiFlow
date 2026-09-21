@@ -41,6 +41,7 @@ from lexiflow.utils import (
     get_media_files,
     invoice_template_themes,
     list_candidate_files,
+    open_in_file_manager,
     parse_conditions,
     process_metadata_to_vocabulary,
     round_up,
@@ -1010,6 +1011,9 @@ class JobContextMenu(BaseContextMenu):
         yield ListItem(Label("📝 Edit Job"), id="edit-job")
         yield ListItem(Label("🎙️ Transcribe"), id="transcribe-job")
         yield ListItem(Label("📄 Process Documents"), id="process-documents")
+        yield ListItem(
+            Label("📂 Open in File Manager"), id="open-file-manager"
+        )
         yield ListItem(Label("🗑️ Delete Job"), id="delete-job")
         yield ListItem(Label("❌ Cancel"), id="cancel-context")
 
@@ -1040,6 +1044,9 @@ class JobContextMenu(BaseContextMenu):
             self.app.push_screen(
                 DocumentProcessingScreen(job_dict), self.check_edit
             )
+        elif action == "open-file-manager":
+            open_in_file_manager(Path(self.item_data.get("job_path")))
+            self.dismiss()
         elif action == "delete-job":
 
             def check_confirm(confirm):

@@ -552,3 +552,24 @@ def test_job_context_menu_process_documents_pushes_screen():
         assert callback == menu.check_edit
     finally:
         patcher.stop()
+
+
+def test_job_context_menu_open_file_manager_calls_utility(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    job_data = {"id": 5, "job_number": "J1", "job_path": str(job_path)}
+    menu = JobContextMenu(job_data)
+    patcher = patch.object(type(menu), "app", new_callable=PropertyMock)
+    mock_app_prop = patcher.start()
+    mock_app_prop.return_value = MagicMock()
+    try:
+        with (
+            patch(
+                "lexiflow.tui.open_in_file_manager"
+            ) as mock_open_in_file_manager,
+            patch.object(menu, "dismiss"),
+        ):
+            menu.handle_action("open-file-manager")
+        mock_open_in_file_manager.assert_called_once_with(job_path)
+    finally:
+        patcher.stop()
