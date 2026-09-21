@@ -93,6 +93,8 @@ class ConfigManager:
             "NOTEBOOKLM_PROMPT_FILE": "NOTEBOOKLM_PROMPT_FILE",
             "NOTEBOOKLM_METADATA_KEYS": "NOTEBOOKLM_METADATA_KEYS",
             "NOTEBOOKLM_MAX_METADATA_TOKENS": "NOTEBOOKLM_MAX_METADATA_TOKENS",
+            "FILE_MANAGER": "FILE_MANAGER",
+            "TERMINAL": "TERMINAL",
         }
 
         migrated = False
@@ -177,6 +179,16 @@ class Settings:
         default_factory=lambda: (
             config_manager.get("NOTEBOOKLM_MAX_METADATA_TOKENS")
             or int(os.getenv("NOTEBOOKLM_MAX_METADATA_TOKENS", "530"))
+        )
+    )
+    FILE_MANAGER: str = field(
+        default_factory=lambda: (
+            config_manager.get("FILE_MANAGER") or os.getenv("FILE_MANAGER", "")
+        )
+    )
+    TERMINAL: str = field(
+        default_factory=lambda: (
+            config_manager.get("TERMINAL") or os.getenv("TERMINAL", "")
         )
     )
 
