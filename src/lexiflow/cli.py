@@ -17,11 +17,13 @@ from lexiflow.config import config_manager
 from lexiflow.extractor import MetadataExtractor, fill_template
 from lexiflow.input_handler import CLIInputHandler
 from lexiflow.pdf import PDFRenderer
+from lexiflow.services import get_service
 from lexiflow.utils import (
     invoice_template_themes,
     parse_conditions,
     parse_conditions_as_dict,
     positive_number_validator,
+    process_metadata_to_vocabulary,
     yes_no_validator,
 )
 from lexiflow.utils.docx_utils import generate_cutoff_list_from_docx
@@ -438,6 +440,35 @@ fill_group.add_argument(
 )
 fill_parser.add_argument(
     "-p", "--pbs", type=Path, help="Path to PBS PDF (used with -n/--notice)"
+)
+
+process_parser = base_subparsers.add_parser(
+    "process",
+    help="full workflow: extract metadata, optionally fill a template, and transcribe",
+)
+process_parser.add_argument(
+    "-n", "--notice", type=Path, required=True, help="Path to notice PDF"
+)
+process_parser.add_argument(
+    "-p", "--pbs", type=Path, required=True, help="Path to PBS PDF"
+)
+process_parser.add_argument(
+    "-a", "--audio", type=Path, required=True, help="Path to audio/video file"
+)
+process_parser.add_argument(
+    "-P",
+    "--provider",
+    choices=TRANSCRIPTION_PROVIDERS,
+    required=True,
+    help="Transcription provider",
+)
+process_parser.add_argument(
+    "-t", "--template", type=Path, help="Path to docx template to fill"
+)
+process_parser.add_argument(
+    "--wait",
+    action="store_true",
+    help="Wait for transcription to complete and fetch the transcript",
 )
 
 
@@ -1678,6 +1709,97 @@ class TranscriptorCMD(cmd2.Cmd):
 
         else:
             self.do_help("fill")
+
+    def process(self, args: Namespace):
+        output_dir = args.pbs.parent
+
+        try:
+            extractor = MetadataExtractor()
+            metadata = extractor.extract_all(args.notice, args.pbs)
+        except Exception as e:
+            self.poutput(f"Error extracting metadata: {e}")
+            return
+
+        metadata_path = output_dir / "metadata.json"
+        metadata_path.write_text(json.dumps(metadata, indent=4))
+        self.poutput(f"Metadata saved to {metadata_path}")
+
+        if args.template:
+            try:
+                filled_path = fill_template(
+                    args.template,
+                    metadata,
+                    output_dir / f"{args.template.stem}_filled.docx",
+                )
+                self.poutput(f"Filled template saved to {filled_path}")
+            except Exception as e:
+                self.poutput(f"Error filling template: {e}")
+                return
+
+        vocabulary = process_metadata_to_vocabulary(metadata)
+        output_txt = output_dir / f"{args.audio.stem}.txt"
+
+        try:
+            asyncio.run(
+                self._process_transcribe(
+                    args.audio, args.provider, vocabulary, output_txt, args.wait
+                )
+            )
+        except Exception as e:
+            self.poutput(f"Error during transcription: {e}")
+
+    process_parser.set_defaults(func=process)
+
+    async def _process_transcribe(
+        self,
+        audio_path: Path,
+        provider: str,
+        vocabulary: list,
+        output_path: Path,
+        wait: bool,
+    ) -> None:
+        service = get_service(provider)
+        try:
+            external_id = await service.submit_job(
+                audio_path, additional_vocabulary=vocabulary
+            )
+            self.poutput(f"Submitted {audio_path} to {provider}: {external_id}")
+
+            if not wait:
+                return
+
+            while True:
+                await asyncio.sleep(5)
+                status_info = await service.get_job_status(external_id)
+                if status_info is None:
+                    self.poutput("Failed to retrieve job status.")
+                    return
+                status = str(status_info.get("status", "")).lower()
+                if status in ("transcribed", "completed", "done"):
+                    transcript = await service.get_transcript(external_id)
+                    output_path.write_text(transcript, encoding="utf-8")
+                    self.poutput(f"Transcript saved to {output_path}")
+                    return
+                elif status in ("failed", "error"):
+                    self.poutput("Transcription failed.")
+                    return
+                else:
+                    self.poutput(f"Job status: {status}. Waiting...")
+        finally:
+            await service.close()
+
+    @cmd2.with_argparser(process_parser)
+    def do_process(self, args: Namespace):
+        """
+
+        Process command help
+
+        """
+        if hasattr(args, "func"):
+            args.func(self, args)
+
+        else:
+            self.do_help("process")
 
 
 def main(argv=None):
