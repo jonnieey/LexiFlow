@@ -405,10 +405,16 @@ extract_parser = base_subparsers.add_parser(
     "extract", help="extract metadata from Notice and PBS PDFs"
 )
 extract_parser.add_argument(
-    "-n", "--notice", type=Path, required=True, help="Path to notice PDF"
+    "-j",
+    "--job_id",
+    type=int,
+    help="Job ID -- resolves notice/PBS interactively from the job's directory if -n/-p aren't given",
 )
 extract_parser.add_argument(
-    "-p", "--pbs", type=Path, required=True, help="Path to PBS PDF"
+    "-n", "--notice", type=Path, help="Path to notice PDF"
+)
+extract_parser.add_argument(
+    "-p", "--pbs", type=Path, help="Path to PBS PDF"
 )
 extract_parser.add_argument(
     "-o",
@@ -1642,10 +1648,28 @@ class TranscriptorCMD(cmd2.Cmd):
             self.do_help("config")
 
     def extract(self, args: Namespace):
-        output_path = args.output or (args.pbs.parent / "metadata.json")
+        notice, pbs = args.notice, args.pbs
+        if notice is None or pbs is None:
+            context = self._resolve_job_context(args)
+            if context is None:
+                return None
+            _, job_dir = context
+
+            if notice is None:
+                notice = self._prompt_pick_file(job_dir, [".pdf"], "notice")
+                if notice is None:
+                    return None
+            if pbs is None:
+                pbs = self._prompt_pick_file(
+                    job_dir, [".pdf"], "PBS", exclude={notice}
+                )
+                if pbs is None:
+                    return None
+
+        output_path = args.output or (pbs.parent / "metadata.json")
         try:
             extractor = MetadataExtractor()
-            metadata = extractor.extract_all(args.notice, args.pbs)
+            metadata = extractor.extract_all(notice, pbs)
         except Exception as e:
             self.poutput(f"Error extracting metadata: {e}")
             return None

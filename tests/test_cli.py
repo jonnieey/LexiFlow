@@ -865,6 +865,69 @@ def test_do_extract_error(cli_app, tmp_path):
     cli_app.poutput.assert_called_with("Error extracting metadata: boom")
 
 
+def test_do_extract_interactive_via_job_id(cli_app, mock_transcriptor, tmp_path):
+    notice = tmp_path / "notice.pdf"
+    pbs = tmp_path / "pbs.pdf"
+    notice.touch()
+    pbs.touch()
+    mock_transcriptor.return_value.api.get_jobs.return_value = [
+        {"id": 739, "job_path": str(tmp_path / "audio.mp3")}
+    ]
+    cli_app.poutput = MagicMock()
+
+    with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
+        mock_extractor_cls.return_value.extract_all.return_value = {
+            "WITNESS_NAME": "Jane Doe"
+        }
+        with patch("lexiflow.cli.prompt", side_effect=["1", "1"]):
+            cli_app.onecmd("extract -j 739")
+
+    mock_extractor_cls.return_value.extract_all.assert_called_once_with(
+        notice, pbs
+    )
+    assert (tmp_path / "metadata.json").exists()
+
+
+def test_do_extract_bare_prompts_for_job_id_first(
+    cli_app, mock_transcriptor, tmp_path
+):
+    notice = tmp_path / "notice.pdf"
+    pbs = tmp_path / "pbs.pdf"
+    notice.touch()
+    pbs.touch()
+    mock_transcriptor.return_value.get_job_directory.return_value = tmp_path
+    mock_transcriptor.return_value.api.get_jobs.return_value = [
+        {"id": 739, "job_path": str(tmp_path / "audio.mp3")}
+    ]
+
+    with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
+        mock_extractor_cls.return_value.extract_all.return_value = {"A": "1"}
+        with patch(
+            "lexiflow.cli.prompt", side_effect=["739", "1", "1"]
+        ):
+            cli_app.onecmd("extract")
+
+    mock_extractor_cls.return_value.extract_all.assert_called_once_with(
+        notice, pbs
+    )
+
+
+def test_do_extract_interactive_notice_pick_cancelled_stops(
+    cli_app, mock_transcriptor, tmp_path
+):
+    notice = tmp_path / "notice.pdf"
+    notice.touch()
+    mock_transcriptor.return_value.api.get_jobs.return_value = [
+        {"id": 739, "job_path": str(tmp_path / "audio.mp3")}
+    ]
+
+    with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
+        with patch("lexiflow.cli.prompt", return_value="abc"):
+            cli_app.onecmd("extract -j 739")
+
+    mock_extractor_cls.assert_not_called()
+
+
 def test_do_fill_with_metadata_file(cli_app, tmp_path):
     template = tmp_path / "template.docx"
     template.write_bytes(b"fake docx")
