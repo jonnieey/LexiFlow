@@ -1246,6 +1246,74 @@ def test_do_process_extract_error_stops_before_submit(cli_app, tmp_path):
     cli_app.poutput.assert_called_with("Error extracting metadata: boom")
 
 
+def test_do_process_interactive_auto_fills_audio_picks_notice_and_pbs(
+    cli_app, mock_transcriptor, tmp_path
+):
+    notice, pbs, audio = _process_paths(tmp_path)
+    mock_transcriptor.return_value.api.get_jobs.return_value = [
+        {"id": 739, "job_path": str(audio)}
+    ]
+
+    mock_service = AsyncMock()
+    mock_service.submit_job.return_value = "ext-job-1"
+
+    with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
+        mock_extractor_cls.return_value.extract_all.return_value = {}
+        with patch("lexiflow.cli.get_service", return_value=mock_service):
+            with patch("lexiflow.cli.prompt", side_effect=["1", "1"]):
+                cli_app.onecmd("process -j 739 -P revai")
+
+    mock_extractor_cls.return_value.extract_all.assert_called_once_with(
+        notice, pbs
+    )
+    mock_service.submit_job.assert_called_once()
+    submit_args, _ = mock_service.submit_job.call_args
+    assert submit_args[0] == audio
+
+
+def test_do_process_interactive_missing_audio_file_errors(
+    cli_app, mock_transcriptor, tmp_path
+):
+    notice, pbs, audio = _process_paths(tmp_path)
+    audio.unlink()
+    mock_transcriptor.return_value.api.get_jobs.return_value = [
+        {"id": 739, "job_path": str(audio)}
+    ]
+    cli_app.poutput = MagicMock()
+
+    mock_service = AsyncMock()
+
+    with patch("lexiflow.cli.get_service", return_value=mock_service):
+        cli_app.onecmd("process -j 739 -P revai")
+
+    cli_app.poutput.assert_called_with(f"Error: Job file not found: {audio}")
+    mock_service.submit_job.assert_not_called()
+
+
+def test_do_process_explicit_audio_skips_auto_fill(
+    cli_app, mock_transcriptor, tmp_path
+):
+    notice, pbs, audio = _process_paths(tmp_path)
+    other_audio = tmp_path / "other.mp3"
+    other_audio.write_bytes(b"fake audio")
+    mock_transcriptor.return_value.api.get_jobs.return_value = [
+        {"id": 739, "job_path": str(audio)}
+    ]
+
+    mock_service = AsyncMock()
+    mock_service.submit_job.return_value = "ext-job-1"
+
+    with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
+        mock_extractor_cls.return_value.extract_all.return_value = {}
+        with patch("lexiflow.cli.get_service", return_value=mock_service):
+            cli_app.onecmd(
+                f"process -j 739 -n {notice} -p {pbs} -a {other_audio} -P revai"
+            )
+
+    submit_args, _ = mock_service.submit_job.call_args
+    assert submit_args[0] == other_audio
+
+
 def test_prompt_pick_file_lists_and_returns_selection(cli_app, tmp_path):
     pdf1 = tmp_path / "a.pdf"
     pdf2 = tmp_path / "b.pdf"

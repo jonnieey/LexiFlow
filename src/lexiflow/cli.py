@@ -460,13 +460,17 @@ process_parser = base_subparsers.add_parser(
     help="full workflow: extract metadata, optionally fill a template, and transcribe",
 )
 process_parser.add_argument(
-    "-n", "--notice", type=Path, required=True, help="Path to notice PDF"
+    "-j",
+    "--job_id",
+    type=int,
+    help="Job ID -- resolves notice/PBS interactively from the job's directory and auto-fills --audio if -n/-p/-a aren't given",
 )
 process_parser.add_argument(
-    "-p", "--pbs", type=Path, required=True, help="Path to PBS PDF"
+    "-n", "--notice", type=Path, help="Path to notice PDF"
 )
+process_parser.add_argument("-p", "--pbs", type=Path, help="Path to PBS PDF")
 process_parser.add_argument(
-    "-a", "--audio", type=Path, required=True, help="Path to audio/video file"
+    "-a", "--audio", type=Path, help="Path to audio/video file"
 )
 process_parser.add_argument(
     "-P",
@@ -1793,11 +1797,36 @@ class TranscriptorCMD(cmd2.Cmd):
             self.do_help("fill")
 
     def process(self, args: Namespace):
-        output_dir = args.pbs.parent
+        notice, pbs, audio = args.notice, args.pbs, args.audio
+
+        if notice is None or pbs is None or audio is None:
+            context = self._resolve_job_context(args)
+            if context is None:
+                return
+            job, job_dir = context
+
+            if audio is None:
+                audio = Path(job["job_path"])
+                if not audio.exists():
+                    self.poutput(f"Error: Job file not found: {audio}")
+                    return
+
+            if notice is None:
+                notice = self._prompt_pick_file(job_dir, [".pdf"], "notice")
+                if notice is None:
+                    return
+            if pbs is None:
+                pbs = self._prompt_pick_file(
+                    job_dir, [".pdf"], "PBS", exclude={notice}
+                )
+                if pbs is None:
+                    return
+
+        output_dir = pbs.parent
 
         try:
             extractor = MetadataExtractor()
-            metadata = extractor.extract_all(args.notice, args.pbs)
+            metadata = extractor.extract_all(notice, pbs)
         except Exception as e:
             self.poutput(f"Error extracting metadata: {e}")
             return
@@ -1819,12 +1848,12 @@ class TranscriptorCMD(cmd2.Cmd):
                 return
 
         vocabulary = process_metadata_to_vocabulary(metadata)
-        output_txt = output_dir / f"{args.audio.stem}.txt"
+        output_txt = output_dir / f"{audio.stem}.txt"
 
         try:
             asyncio.run(
                 self._process_transcribe(
-                    args.audio, args.provider, vocabulary, output_txt, args.wait
+                    audio, args.provider, vocabulary, output_txt, args.wait
                 )
             )
         except Exception as e:
