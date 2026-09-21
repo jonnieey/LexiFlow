@@ -3,6 +3,7 @@ import asyncio
 import json
 import os
 import sys
+import threading
 from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
@@ -1559,23 +1560,34 @@ class TranscriptorCMD(cmd2.Cmd):
                 for term in args.vocabulary.split(",")
                 if term.strip()
             ]
+        thread = threading.Thread(
+            target=self._submit_transcription_worker,
+            args=(args.job_id, provider, vocabulary),
+            daemon=True,
+        )
+        thread.start()
+        self.poutput(
+            f"Submitting job {args.job_id} to {provider} in the background..."
+        )
+
+    transcribe_submit_parser.set_defaults(func=transcribe_submit)
+
+    def _submit_transcription_worker(self, job_id, provider, vocabulary):
         try:
             external_id = asyncio.run(
                 self.app.submit_transcription(
-                    args.job_id,
+                    job_id,
                     provider,
                     additional_vocabulary=vocabulary,
                 )
             )
             self.poutput(
-                f"Submitted job {args.job_id} to {provider}: {external_id}"
+                f"Submitted job {job_id} to {provider}: {external_id}"
             )
         except (ValueError, FileNotFoundError) as e:
             self.poutput(f"Error: {e}")
         except Exception as e:
             self.poutput(f"Error submitting transcription: {e}")
-
-    transcribe_submit_parser.set_defaults(func=transcribe_submit)
 
     def transcribe_status(self, args: Namespace):
         try:

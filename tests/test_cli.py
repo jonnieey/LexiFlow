@@ -695,58 +695,52 @@ def test_do_invoice_prompt_client(cli_app, mock_transcriptor):
 # -------- transcribe submit/status/fetch --------
 
 
-def test_do_transcribe_submit(cli_app, mock_transcriptor):
-    mock_transcriptor.return_value.submit_transcription.return_value = (
-        "ext-123"
-    )
+def test_do_transcribe_submit_starts_background_thread_and_returns(
+    cli_app, mock_transcriptor
+):
     cli_app.poutput = MagicMock()
 
-    cli_app.onecmd("transcribe submit -j 5 -P revai")
+    with patch("lexiflow.cli.threading.Thread") as mock_thread_cls:
+        cli_app.onecmd("transcribe submit -j 5 -P revai")
 
-    mock_transcriptor.return_value.submit_transcription.assert_called_once_with(
-        5, "revai", additional_vocabulary=None
+    mock_transcriptor.return_value.submit_transcription.assert_not_called()
+    mock_thread_cls.assert_called_once_with(
+        target=cli_app._submit_transcription_worker,
+        args=(5, "revai", None),
+        daemon=True,
     )
+    mock_thread_cls.return_value.start.assert_called_once()
     cli_app.poutput.assert_called_with(
-        "Submitted job 5 to revai: ext-123"
+        "Submitting job 5 to revai in the background..."
     )
 
 
-def test_do_transcribe_submit_with_vocabulary(cli_app, mock_transcriptor):
-    mock_transcriptor.return_value.submit_transcription.return_value = "ext-1"
+def test_do_transcribe_submit_with_vocabulary_passed_to_thread(
+    cli_app, mock_transcriptor
+):
+    with patch("lexiflow.cli.threading.Thread") as mock_thread_cls:
+        cli_app.onecmd(
+            "transcribe submit -j 5 -P speechmatics --vocabulary 'Plaintiff, Defendant'"
+        )
 
-    cli_app.onecmd(
-        "transcribe submit -j 5 -P speechmatics --vocabulary 'Plaintiff, Defendant'"
-    )
-
-    mock_transcriptor.return_value.submit_transcription.assert_called_once_with(
-        5, "speechmatics", additional_vocabulary=["Plaintiff", "Defendant"]
-    )
-
-
-def test_do_transcribe_submit_error(cli_app, mock_transcriptor):
-    mock_transcriptor.return_value.submit_transcription.side_effect = (
-        FileNotFoundError("Job file not found: /tmp/x.mp3")
-    )
-    cli_app.poutput = MagicMock()
-
-    cli_app.onecmd("transcribe submit -j 5 -P revai")
-
-    cli_app.poutput.assert_called_with(
-        "Error: Job file not found: /tmp/x.mp3"
+    mock_thread_cls.assert_called_once_with(
+        target=cli_app._submit_transcription_worker,
+        args=(5, "speechmatics", ["Plaintiff", "Defendant"]),
+        daemon=True,
     )
 
 
 def test_do_transcribe_submit_prompts_for_provider_when_omitted(
     cli_app, mock_transcriptor
 ):
-    mock_transcriptor.return_value.submit_transcription.return_value = "ext-1"
-    cli_app.poutput = MagicMock()
+    with patch("lexiflow.cli.threading.Thread") as mock_thread_cls:
+        with patch("lexiflow.cli.prompt", return_value="2"):
+            cli_app.onecmd("transcribe submit -j 5")
 
-    with patch("lexiflow.cli.prompt", return_value="2"):
-        cli_app.onecmd("transcribe submit -j 5")
-
-    mock_transcriptor.return_value.submit_transcription.assert_called_once_with(
-        5, "revai", additional_vocabulary=None
+    mock_thread_cls.assert_called_once_with(
+        target=cli_app._submit_transcription_worker,
+        args=(5, "revai", None),
+        daemon=True,
     )
 
 
@@ -760,6 +754,47 @@ def test_do_transcribe_submit_invalid_provider_selection_stops(
 
     mock_transcriptor.return_value.submit_transcription.assert_not_called()
     cli_app.poutput.assert_called_with("Invalid selection.")
+
+
+def test_submit_transcription_worker_success(cli_app, mock_transcriptor):
+    mock_transcriptor.return_value.submit_transcription.return_value = (
+        "ext-123"
+    )
+    cli_app.poutput = MagicMock()
+
+    cli_app._submit_transcription_worker(5, "revai", None)
+
+    mock_transcriptor.return_value.submit_transcription.assert_called_once_with(
+        5, "revai", additional_vocabulary=None
+    )
+    cli_app.poutput.assert_called_with("Submitted job 5 to revai: ext-123")
+
+
+def test_submit_transcription_worker_passes_vocabulary(
+    cli_app, mock_transcriptor
+):
+    mock_transcriptor.return_value.submit_transcription.return_value = "ext-1"
+
+    cli_app._submit_transcription_worker(
+        5, "speechmatics", ["Plaintiff", "Defendant"]
+    )
+
+    mock_transcriptor.return_value.submit_transcription.assert_called_once_with(
+        5, "speechmatics", additional_vocabulary=["Plaintiff", "Defendant"]
+    )
+
+
+def test_submit_transcription_worker_error(cli_app, mock_transcriptor):
+    mock_transcriptor.return_value.submit_transcription.side_effect = (
+        FileNotFoundError("Job file not found: /tmp/x.mp3")
+    )
+    cli_app.poutput = MagicMock()
+
+    cli_app._submit_transcription_worker(5, "revai", None)
+
+    cli_app.poutput.assert_called_with(
+        "Error: Job file not found: /tmp/x.mp3"
+    )
 
 
 def test_do_open(cli_app, mock_transcriptor, tmp_path):
