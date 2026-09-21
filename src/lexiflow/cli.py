@@ -21,6 +21,7 @@ from lexiflow.services import get_service
 from lexiflow.utils import (
     invoice_template_themes,
     list_candidate_files,
+    open_in_file_manager,
     parse_conditions,
     parse_conditions_as_dict,
     positive_number_validator,
@@ -311,6 +312,13 @@ purge_parser.add_argument(
 )
 purge_parser.add_argument("-r", "--raw", help="Raw sql query")
 
+
+open_parser = base_subparsers.add_parser(
+    "open", help="open a job's directory in the system file manager"
+)
+open_parser.add_argument(
+    "-j", "--job_id", type=int, required=True, help="Job ID"
+)
 
 backup_parser = base_subparsers.add_parser("backup", help="backup database")
 restore_parser = base_subparsers.add_parser(
@@ -1488,6 +1496,16 @@ class TranscriptorCMD(cmd2.Cmd):
 
         else:
             self.do_help("purge")
+
+    @cmd2.with_argparser(open_parser)
+    def do_open(self, args: Namespace):
+        """Open a job's directory in the system file manager."""
+        try:
+            job_dir = self.app.get_job_directory(args.job_id)
+        except ValueError as e:
+            self.poutput(f"Error: {e}")
+            return
+        open_in_file_manager(job_dir)
 
     @cmd2.with_argparser(backup_parser)
     def do_backup(self, args: Namespace):

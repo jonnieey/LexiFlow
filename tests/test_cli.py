@@ -762,6 +762,31 @@ def test_do_transcribe_submit_invalid_provider_selection_stops(
     cli_app.poutput.assert_called_with("Invalid selection.")
 
 
+def test_do_open(cli_app, mock_transcriptor, tmp_path):
+    mock_transcriptor.return_value.get_job_directory.return_value = tmp_path
+
+    with patch("lexiflow.cli.open_in_file_manager") as mock_open:
+        cli_app.onecmd("open -j 5")
+
+    mock_transcriptor.return_value.get_job_directory.assert_called_once_with(
+        5
+    )
+    mock_open.assert_called_once_with(tmp_path)
+
+
+def test_do_open_invalid_job(cli_app, mock_transcriptor):
+    mock_transcriptor.return_value.get_job_directory.side_effect = (
+        ValueError("Job 5 not found")
+    )
+    cli_app.poutput = MagicMock()
+
+    with patch("lexiflow.cli.open_in_file_manager") as mock_open:
+        cli_app.onecmd("open -j 5")
+
+    mock_open.assert_not_called()
+    cli_app.poutput.assert_called_with("Error: Job 5 not found")
+
+
 def test_do_transcribe_status(cli_app, mock_transcriptor):
     mock_transcriptor.return_value.poll_transcription_status.return_value = (
         "transcribed"
