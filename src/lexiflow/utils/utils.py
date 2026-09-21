@@ -38,6 +38,7 @@ from .sql_parsers import (
     parse_sql_update_query,
 )
 from .status_display import classify_status, format_status_badge
+from .system_open import open_in_file_manager
 from .text_converters import convert_case, extract_job_number, kc, nc, sc, tc
 from .validators import (
     date_validator,
