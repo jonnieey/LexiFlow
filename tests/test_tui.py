@@ -570,6 +570,8 @@ def test_job_context_menu_open_file_manager_calls_utility(tmp_path):
             patch.object(menu, "dismiss"),
         ):
             menu.handle_action("open-file-manager")
-        mock_open_in_file_manager.assert_called_once_with(job_path)
+        mock_open_in_file_manager.assert_called_once_with(
+            job_path, suspend_cm=menu.app.suspend
+        )
     finally:
         patcher.stop()

@@ -1045,7 +1045,10 @@ class JobContextMenu(BaseContextMenu):
                 DocumentProcessingScreen(job_dict), self.check_edit
             )
         elif action == "open-file-manager":
-            open_in_file_manager(Path(self.item_data.get("job_path")))
+            open_in_file_manager(
+                Path(self.item_data.get("job_path")),
+                suspend_cm=self.app.suspend,
+            )
             self.dismiss()
         elif action == "delete-job":
 
