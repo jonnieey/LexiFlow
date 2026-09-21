@@ -18,12 +18,6 @@ DataTable {
     scrollbar-size: 1 1;
     scrollbar-color: $panel;
 }
-DataTable:focus {
-    outline: solid $accent;
-}
-ListView:focus {
-    outline: solid $accent;
-}
 Button {
     height: auto;
 }
@@ -50,7 +44,7 @@ Input:focus, Select:focus, TextArea:focus {
 }
 .dashboard-container, .profile-container, .clients-container,
 .rates-container, .config-container, .invoicing-container {
-    padding: 1;
+    padding: 0 1;
     border: solid $accent;
 }
 
@@ -72,13 +66,38 @@ Button {
     padding: 0 1;                   /* no extra padding */
 }
 
-.button-bar > Button {
+.button-bar > Button,
+.button-bar > Button.-primary,
+.button-bar > Button.-success,
+.button-bar > Button.-warning,
+.button-bar > Button.-error {
     margin: 0 1;
     min-width: 16;
     height: auto;
+    border: none;
 }
 .button-bar > Button:focus {
     text-style: bold reverse;
+}
+/* App CSS overrides Button's own DEFAULT_CSS unconditionally (confirmed
+   empirically -- it isn't a normal specificity contest), so the
+   default-variant background fix below would otherwise also flatten
+   every colored variant to the same gray. Reassert each variant's own
+   background explicitly so only truly-default buttons turn gray. */
+Button.-style-default {
+    background: $panel;
+}
+Button.-primary {
+    background: $primary;
+}
+Button.-success {
+    background: $success;
+}
+Button.-warning {
+    background: $warning;
+}
+Button.-error {
+    background: $error;
 }
 .summary-title {
     text-style: bold;
