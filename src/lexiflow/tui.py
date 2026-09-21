@@ -1251,6 +1251,9 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
                 classes="transcription-title",
             )
             yield Static(id="doc-info")
+            yield Checkbox(
+                "Use existing metadata.json", id="doc-use-metadata"
+            )
             yield Label("Notice PDF:")
             yield Select([], id="doc-notice", prompt="Select notice PDF")
             yield Label("PBS PDF:")
@@ -1275,6 +1278,7 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
         self._populate_pdf_selects()
         self._populate_template_select()
         self._update_info_display()
+        self._refresh_metadata_checkbox()
 
     def _populate_pdf_selects(self, exclude_notice: Optional[Path] = None):
         job_dir = self._job_dir()
@@ -1314,6 +1318,18 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
     def _update_info_display(self):
         self.query_one("#doc-info", Static).update(self._format_info())
 
+    def _load_existing_metadata(self) -> Optional[Dict]:
+        metadata_path = self._job_dir() / "metadata.json"
+        if metadata_path.exists():
+            return json.loads(metadata_path.read_text())
+        return None
+
+    def _refresh_metadata_checkbox(self):
+        checkbox = self.query_one("#doc-use-metadata", Checkbox)
+        exists = self._load_existing_metadata() is not None
+        checkbox.disabled = not exists
+        checkbox.value = exists
+
     def _selected_path(self, selector: str) -> Optional[Path]:
         value = self.query_one(selector, Select).value
         if not value or value is Select.BLANK:
@@ -1335,30 +1351,56 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
         metadata_path.write_text(json.dumps(metadata, indent=4))
         return metadata
 
-    def do_fill(self, template: Path) -> Path:
-        """Fill a template using this job's already-extracted metadata.
+    async def _resolve_metadata(
+        self,
+        notice: Optional[Path],
+        pbs: Optional[Path],
+        use_existing: bool,
+    ) -> Dict:
+        """Resolve metadata for Fill/Process: reuse an existing
+        metadata.json when asked to and one is present, otherwise
+        extract fresh from notice+pbs. Raises ValueError if neither
+        source is available. Kept free of widget access -- the
+        use_existing flag is read from the checkbox by the button
+        handlers and passed in explicitly, same as notice/pbs/template/
+        provider already are."""
+        if use_existing:
+            existing = self._load_existing_metadata()
+            if existing is not None:
+                return existing
 
-        Raises FileNotFoundError if metadata.json doesn't exist yet.
-        """
-        metadata_path = self._job_dir() / "metadata.json"
-        if not metadata_path.exists():
-            raise FileNotFoundError(
-                f"No metadata.json found in {self._job_dir()} -- run "
-                "Extract first."
+        if notice is None or pbs is None:
+            raise ValueError(
+                "Select both a notice and a PBS file, or check 'Use "
+                "existing metadata.json'."
             )
-        metadata = json.loads(metadata_path.read_text())
+        return await self.do_extract(notice, pbs)
+
+    async def do_fill(
+        self,
+        notice: Optional[Path],
+        pbs: Optional[Path],
+        template: Path,
+        use_existing: bool = True,
+    ) -> Path:
+        """Fill a template, reusing existing metadata.json when
+        use_existing is True and one exists, else extracting fresh from
+        notice+pbs. Raises on error."""
+        metadata = await self._resolve_metadata(notice, pbs, use_existing)
         return fill_template(template, metadata, None)
 
     async def do_process(
         self,
-        notice: Path,
-        pbs: Path,
+        notice: Optional[Path],
+        pbs: Optional[Path],
         template: Optional[Path],
         provider: str,
+        use_existing: bool = True,
     ) -> str:
-        """Extract, optionally fill a template, then submit for
-        transcription. Raises on error."""
-        metadata = await self.do_extract(notice, pbs)
+        """Resolve metadata (reusing existing metadata.json when asked
+        to, else extracting), optionally fill a template, then submit
+        for transcription. Raises on error."""
+        metadata = await self._resolve_metadata(notice, pbs, use_existing)
         if template:
             await asyncio.to_thread(fill_template, template, metadata, None)
         vocabulary = process_metadata_to_vocabulary(metadata)
@@ -1384,16 +1426,22 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
             )
             return
         self._update_info_display()
+        self._refresh_metadata_checkbox()
         self.app.notify("Metadata extracted and saved.")
 
     @on(Button.Pressed, "#doc-fill-btn")
-    def on_fill_pressed(self):
+    async def on_fill_pressed(self):
         template = self._selected_path("#doc-template")
         if template is None:
             self.app.notify("Select a template.", severity="error")
             return
+        notice = self._selected_path("#doc-notice")
+        pbs = self._selected_path("#doc-pbs")
+        use_existing = self.query_one("#doc-use-metadata", Checkbox).value
         try:
-            result_path = self.do_fill(template)
+            result_path = await self.do_fill(
+                notice, pbs, template, use_existing
+            )
         except Exception as e:
             self.app.notify(f"Error filling template: {e}", severity="error")
             return
@@ -1405,22 +1453,19 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
         pbs = self._selected_path("#doc-pbs")
         template = self._selected_path("#doc-template")
         provider = self.query_one("#doc-provider", Select).value
-        if notice is None or pbs is None:
-            self.app.notify(
-                "Select both a notice and a PBS file.", severity="error"
-            )
-            return
+        use_existing = self.query_one("#doc-use-metadata", Checkbox).value
         if not provider or provider is Select.BLANK:
             self.app.notify("Select a provider.", severity="error")
             return
         try:
             external_id = await self.do_process(
-                notice, pbs, template, provider
+                notice, pbs, template, provider, use_existing
             )
         except Exception as e:
             self.app.notify(f"Error processing: {e}", severity="error")
             return
         self._update_info_display()
+        self._refresh_metadata_checkbox()
         self.app.notify(f"Submitted to {provider}: {external_id}")
 
     @on(Button.Pressed, "#doc-close")

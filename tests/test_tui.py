@@ -344,7 +344,7 @@ def test_doc_do_extract_saves_metadata_json(tmp_path):
         patcher.stop()
 
 
-def test_doc_do_fill_reads_existing_metadata_json(tmp_path):
+def test_doc_do_fill_reuses_existing_metadata_json_by_default(tmp_path):
     job_path = tmp_path / "audio.mp3"
     job_path.write_text("fake audio")
     (tmp_path / "metadata.json").write_text(json.dumps({"A": "1"}))
@@ -353,17 +353,51 @@ def test_doc_do_fill_reads_existing_metadata_json(tmp_path):
     )
     try:
         template = tmp_path / "template.docx"
-        with patch("lexiflow.tui.fill_template") as mock_fill:
-            mock_fill.return_value = tmp_path / "template_filled.docx"
-            result = screen.do_fill(template)
+        with patch("lexiflow.tui.MetadataExtractor") as mock_extractor_cls:
+            with patch("lexiflow.tui.fill_template") as mock_fill:
+                mock_fill.return_value = tmp_path / "template_filled.docx"
+                result = asyncio.run(
+                    screen.do_fill(None, None, template, use_existing=True)
+                )
 
+        mock_extractor_cls.assert_not_called()
         mock_fill.assert_called_once_with(template, {"A": "1"}, None)
         assert result == tmp_path / "template_filled.docx"
     finally:
         patcher.stop()
 
 
-def test_doc_do_fill_raises_without_metadata_json(tmp_path):
+def test_doc_do_fill_extracts_when_use_existing_false(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    (tmp_path / "metadata.json").write_text(json.dumps({"A": "1"}))
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        notice = tmp_path / "notice.pdf"
+        pbs = tmp_path / "pbs.pdf"
+        template = tmp_path / "template.docx"
+        with patch("lexiflow.tui.MetadataExtractor") as mock_extractor_cls:
+            mock_extractor_cls.return_value.extract_all.return_value = {
+                "B": "2"
+            }
+            with patch("lexiflow.tui.fill_template") as mock_fill:
+                asyncio.run(
+                    screen.do_fill(
+                        notice, pbs, template, use_existing=False
+                    )
+                )
+
+        mock_extractor_cls.return_value.extract_all.assert_called_once_with(
+            notice, pbs
+        )
+        mock_fill.assert_called_once_with(template, {"B": "2"}, None)
+    finally:
+        patcher.stop()
+
+
+def test_doc_do_fill_raises_without_metadata_or_notice_pbs(tmp_path):
     job_path = tmp_path / "audio.mp3"
     job_path.write_text("fake audio")
     screen, patcher = _document_processing_screen_with_mock_app(
@@ -371,8 +405,8 @@ def test_doc_do_fill_raises_without_metadata_json(tmp_path):
     )
     try:
         template = tmp_path / "template.docx"
-        with pytest.raises(FileNotFoundError):
-            screen.do_fill(template)
+        with pytest.raises(ValueError, match="Select both a notice"):
+            asyncio.run(screen.do_fill(None, None, template))
     finally:
         patcher.stop()
 
@@ -425,6 +459,54 @@ def test_doc_do_process_without_template_skips_fill(tmp_path):
                 asyncio.run(screen.do_process(notice, pbs, None, "revai"))
 
         mock_fill.assert_not_called()
+    finally:
+        patcher.stop()
+
+
+def test_doc_do_process_reuses_existing_metadata_without_reextracting(
+    tmp_path,
+):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    (tmp_path / "metadata.json").write_text(
+        json.dumps({"WITNESS_NAME": "Jane Doe"})
+    )
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        screen.app.transcriptor.submit_transcription.return_value = "ext-123"
+        template = tmp_path / "template.docx"
+        with patch("lexiflow.tui.MetadataExtractor") as mock_extractor_cls:
+            with patch("lexiflow.tui.fill_template") as mock_fill:
+                mock_fill.return_value = tmp_path / "template_filled.docx"
+                external_id = asyncio.run(
+                    screen.do_process(
+                        None, None, template, "revai", use_existing=True
+                    )
+                )
+
+        mock_extractor_cls.assert_not_called()
+        assert external_id == "ext-123"
+        mock_fill.assert_called_once_with(
+            template, {"WITNESS_NAME": "Jane Doe"}, None
+        )
+        screen.app.transcriptor.submit_transcription.assert_awaited_once_with(
+            5, "revai", additional_vocabulary=["Jane", "Doe"]
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_do_process_raises_without_metadata_or_notice_pbs(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        with pytest.raises(ValueError, match="Select both a notice"):
+            asyncio.run(screen.do_process(None, None, None, "revai"))
     finally:
         patcher.stop()
 

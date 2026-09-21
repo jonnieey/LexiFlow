@@ -13,7 +13,7 @@ lexiflow.base.DEFAULT_CONFIG['base_dir'] must be patched together.
 import asyncio
 
 import pytest
-from textual.widgets import Select
+from textual.widgets import Checkbox, Select
 
 import lexiflow.base as base_module
 from lexiflow.tui import DocumentProcessingScreen, TranscriptorTUI
@@ -112,5 +112,54 @@ def test_picking_notice_excludes_it_from_pbs_options(isolated_app, tmp_path):
                 v for _, v in pbs_select._options if v is not Select.BLANK
             }
             assert pbs_values == {str(job_dir / "pbs.pdf")}
+
+    asyncio.run(_run())
+
+
+def test_use_existing_metadata_checkbox_disabled_when_no_metadata_json(
+    isolated_app, tmp_path
+):
+    job_dir, audio = _job_dir_with_files(tmp_path)
+
+    async def _run():
+        async with isolated_app.run_test() as pilot:
+            await pilot.pause()
+            isolated_app.push_screen(
+                DocumentProcessingScreen(
+                    {"id": 1, "job_number": "J1", "job_path": str(audio)}
+                )
+            )
+            await pilot.pause()
+
+            checkbox = isolated_app.screen.query_one(
+                "#doc-use-metadata", Checkbox
+            )
+            assert checkbox.disabled is True
+            assert checkbox.value is False
+
+    asyncio.run(_run())
+
+
+def test_use_existing_metadata_checkbox_enabled_when_metadata_json_present(
+    isolated_app, tmp_path
+):
+    job_dir, audio = _job_dir_with_files(tmp_path)
+    (job_dir / "metadata.json").write_text("{}")
+
+    async def _run():
+        async with isolated_app.run_test() as pilot:
+            await pilot.pause()
+            isolated_app.push_screen(
+                DocumentProcessingScreen(
+                    {"id": 1, "job_number": "J1", "job_path": str(audio)}
+                )
+            )
+            await pilot.pause()
+
+            checkbox = isolated_app.screen.query_one(
+                "#doc-use-metadata", Checkbox
+            )
+            assert checkbox.disabled is False
+            assert checkbox.value is True
 
     asyncio.run(_run())
