@@ -862,3 +862,88 @@ def test_do_extract_error(cli_app, tmp_path):
         cli_app.onecmd(f"extract -n {notice} -p {pbs}")
 
     cli_app.poutput.assert_called_with("Error extracting metadata: boom")
+
+
+def test_do_fill_with_metadata_file(cli_app, tmp_path):
+    template = tmp_path / "template.docx"
+    template.write_bytes(b"fake docx")
+    metadata_file = tmp_path / "metadata.json"
+    metadata_file.write_text('{"WITNESS_NAME": "Jane Doe"}')
+    cli_app.poutput = MagicMock()
+
+    with patch("lexiflow.cli.fill_template") as mock_fill:
+        mock_fill.return_value = tmp_path / "template_filled.docx"
+        cli_app.onecmd(f"fill -t {template} -m {metadata_file}")
+
+    mock_fill.assert_called_once_with(
+        template, {"WITNESS_NAME": "Jane Doe"}, None
+    )
+    cli_app.poutput.assert_called_with(
+        f"Filled template saved to {tmp_path / 'template_filled.docx'}"
+    )
+
+
+def test_do_fill_with_notice_and_pbs_extracts_first(cli_app, tmp_path):
+    template = tmp_path / "template.docx"
+    template.write_bytes(b"fake docx")
+    notice = tmp_path / "notice.pdf"
+    pbs = tmp_path / "pbs.pdf"
+    notice.write_bytes(b"%PDF-1.4 fake")
+    pbs.write_bytes(b"%PDF-1.4 fake")
+
+    with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
+        mock_extractor_cls.return_value.extract_all.return_value = {
+            "WITNESS_NAME": "Jane Doe"
+        }
+        with patch("lexiflow.cli.fill_template") as mock_fill:
+            mock_fill.return_value = tmp_path / "template_filled.docx"
+            cli_app.onecmd(f"fill -t {template} -n {notice} -p {pbs}")
+
+    mock_extractor_cls.return_value.extract_all.assert_called_once_with(
+        notice, pbs
+    )
+    mock_fill.assert_called_once_with(
+        template, {"WITNESS_NAME": "Jane Doe"}, None
+    )
+    # extract's own side effect (writing metadata.json) still happens
+    assert (pbs.parent / "metadata.json").exists()
+
+
+def test_do_fill_notice_without_pbs_errors(cli_app, tmp_path):
+    template = tmp_path / "template.docx"
+    template.write_bytes(b"fake docx")
+    notice = tmp_path / "notice.pdf"
+    notice.write_bytes(b"%PDF-1.4 fake")
+    cli_app.poutput = MagicMock()
+
+    cli_app.onecmd(f"fill -t {template} -n {notice}")
+
+    cli_app.poutput.assert_called_with(
+        "Error: -p/--pbs is required when using -n/--notice"
+    )
+
+
+def test_do_fill_missing_metadata_file(cli_app, tmp_path):
+    template = tmp_path / "template.docx"
+    template.write_bytes(b"fake docx")
+    cli_app.poutput = MagicMock()
+
+    cli_app.onecmd(f"fill -t {template} -m /nonexistent/metadata.json")
+
+    cli_app.poutput.assert_called_with(
+        "Metadata file not found: /nonexistent/metadata.json"
+    )
+
+
+def test_do_fill_error(cli_app, tmp_path):
+    template = tmp_path / "template.docx"
+    template.write_bytes(b"fake docx")
+    metadata_file = tmp_path / "metadata.json"
+    metadata_file.write_text("{}")
+    cli_app.poutput = MagicMock()
+
+    with patch("lexiflow.cli.fill_template") as mock_fill:
+        mock_fill.side_effect = RuntimeError("boom")
+        cli_app.onecmd(f"fill -t {template} -m {metadata_file}")
+
+    cli_app.poutput.assert_called_with("Error filling template: boom")

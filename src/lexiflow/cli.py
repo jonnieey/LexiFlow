@@ -14,7 +14,7 @@ from prompt_toolkit.styles import Style
 
 from lexiflow.base import Transcriptor
 from lexiflow.config import config_manager
-from lexiflow.extractor import MetadataExtractor
+from lexiflow.extractor import MetadataExtractor, fill_template
 from lexiflow.input_handler import CLIInputHandler
 from lexiflow.pdf import PDFRenderer
 from lexiflow.utils import (
@@ -412,6 +412,32 @@ extract_parser.add_argument(
     "--output",
     type=Path,
     help="Output path for metadata JSON (default: <pbs_dir>/metadata.json)",
+)
+
+fill_parser = base_subparsers.add_parser(
+    "fill", help="fill a docx template with metadata"
+)
+fill_parser.add_argument(
+    "-t", "--template", type=Path, required=True, help="Path to docx template"
+)
+fill_parser.add_argument(
+    "-o",
+    "--output",
+    type=Path,
+    help="Output path (default: <template>_filled.docx)",
+)
+fill_group = fill_parser.add_mutually_exclusive_group(required=True)
+fill_group.add_argument(
+    "-m", "--metadata", type=Path, help="Path to metadata JSON file"
+)
+fill_group.add_argument(
+    "-n",
+    "--notice",
+    type=Path,
+    help="Path to notice PDF (requires -p/--pbs; extracts metadata first)",
+)
+fill_parser.add_argument(
+    "-p", "--pbs", type=Path, help="Path to PBS PDF (used with -n/--notice)"
 )
 
 
@@ -1611,6 +1637,47 @@ class TranscriptorCMD(cmd2.Cmd):
 
         else:
             self.do_help("extract")
+
+    def fill(self, args: Namespace):
+        if args.metadata:
+            if not args.metadata.exists():
+                self.poutput(f"Metadata file not found: {args.metadata}")
+                return
+            metadata = json.loads(args.metadata.read_text())
+        else:
+            if not args.pbs:
+                self.poutput(
+                    "Error: -p/--pbs is required when using -n/--notice"
+                )
+                return
+            metadata = self.extract(
+                Namespace(notice=args.notice, pbs=args.pbs, output=None)
+            )
+            if metadata is None:
+                return
+
+        try:
+            result_path = fill_template(args.template, metadata, args.output)
+        except Exception as e:
+            self.poutput(f"Error filling template: {e}")
+            return
+
+        self.poutput(f"Filled template saved to {result_path}")
+
+    fill_parser.set_defaults(func=fill)
+
+    @cmd2.with_argparser(fill_parser)
+    def do_fill(self, args: Namespace):
+        """
+
+        Fill command help
+
+        """
+        if hasattr(args, "func"):
+            args.func(self, args)
+
+        else:
+            self.do_help("fill")
 
 
 def main(argv=None):
