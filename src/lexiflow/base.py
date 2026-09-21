@@ -993,6 +993,11 @@ class Transcriptor:
             raise ValueError(f"No job found with id {job_id}")
         return jobs[0]
 
+    def get_job_directory(self, job_id: int) -> Path:
+        """Directory containing a job's files (job_path's parent)."""
+        job = self._get_transcription_job(job_id)
+        return Path(job["job_path"]).parent
+
     async def submit_transcription(
         self,
         job_id: int,

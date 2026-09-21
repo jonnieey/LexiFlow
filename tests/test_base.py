@@ -1064,6 +1064,16 @@ def test_submit_transcription_missing_file_raises(transcriptor, test_base_dir):
         asyncio.run(transcriptor.submit_transcription(job_id, "revai"))
 
 
+def test_get_job_directory_returns_job_path_parent(transcriptor, test_base_dir):
+    job_id, job_file = _make_transcription_job(transcriptor, test_base_dir)
+    assert transcriptor.get_job_directory(job_id) == job_file.parent
+
+
+def test_get_job_directory_missing_job_raises(transcriptor):
+    with pytest.raises(ValueError, match="No job found"):
+        transcriptor.get_job_directory(999999)
+
+
 def test_poll_transcription_status_updates_job(transcriptor, test_base_dir):
     job_id, _ = _make_transcription_job(
         transcriptor,
