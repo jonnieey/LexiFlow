@@ -15,6 +15,7 @@ fix (important) — DONE (see PROGRESS.md "Phase 4")
 features — DONE (see PROGRESS.md "Phase 4" Part B)
  - spawn file manager on job directory. Should be a separate process
    [x] done — `open_in_file_manager()` util (detached subprocess), TUI JobContextMenu item, CLI `open -j <id>` command
+   [x] follow-up fixed — terminal-based managers (clifm) now launch inside a terminal emulator (xdg-open ignores `Terminal=true`); `FILE_MANAGER`/`TERMINAL` config, in-place fallback with TUI suspend. See PROGRESS.md "Part B follow-up"
 
 improvements — DONE (see PROGRESS.md "Phase 4" Part C)
  - run transcribe jobs in background on the cli
