@@ -12,10 +12,12 @@ fix (important) — DONE (see PROGRESS.md "Phase 4")
 
  - port all of these capabilities to lexiflow
 
-features
+features — DONE (see PROGRESS.md "Phase 4" Part B)
  - spawn file manager on job directory. Should be a separate process
+   [x] done — `open_in_file_manager()` util (detached subprocess), TUI JobContextMenu item, CLI `open -j <id>` command
 
-improvements
+improvements — DONE (see PROGRESS.md "Phase 4" Part C)
  - run transcribe jobs in background on the cli
+   [x] done — `transcribe submit` now dispatches to a background daemon thread instead of blocking the shell
 
 
