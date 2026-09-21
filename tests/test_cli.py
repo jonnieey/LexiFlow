@@ -1,5 +1,6 @@
 import json
 import shutil
+from argparse import Namespace
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1067,3 +1068,166 @@ def test_do_process_extract_error_stops_before_submit(cli_app, tmp_path):
 
     mock_service.submit_job.assert_not_called()
     cli_app.poutput.assert_called_with("Error extracting metadata: boom")
+
+
+def test_prompt_pick_file_lists_and_returns_selection(cli_app, tmp_path):
+    pdf1 = tmp_path / "a.pdf"
+    pdf2 = tmp_path / "b.pdf"
+    pdf1.touch()
+    pdf2.touch()
+    cli_app.poutput = MagicMock()
+
+    with patch("lexiflow.cli.prompt", return_value="2"):
+        result = cli_app._prompt_pick_file(tmp_path, [".pdf"], "notice")
+
+    assert result == pdf2
+    cli_app.poutput.assert_any_call("Select notice:")
+    cli_app.poutput.assert_any_call("1: a.pdf")
+    cli_app.poutput.assert_any_call("2: b.pdf")
+
+
+def test_prompt_pick_file_no_candidates(cli_app, tmp_path):
+    cli_app.poutput = MagicMock()
+
+    result = cli_app._prompt_pick_file(tmp_path, [".pdf"], "notice")
+
+    assert result is None
+    cli_app.poutput.assert_called_with(
+        f"No notice candidates found in {tmp_path}"
+    )
+
+
+def test_prompt_pick_file_invalid_selection(cli_app, tmp_path):
+    (tmp_path / "a.pdf").touch()
+    cli_app.poutput = MagicMock()
+
+    with patch("lexiflow.cli.prompt", return_value="99"):
+        result = cli_app._prompt_pick_file(tmp_path, [".pdf"], "notice")
+
+    assert result is None
+    cli_app.poutput.assert_called_with("Invalid selection.")
+
+
+def test_prompt_pick_file_non_numeric_input(cli_app, tmp_path):
+    (tmp_path / "a.pdf").touch()
+    cli_app.poutput = MagicMock()
+
+    with patch("lexiflow.cli.prompt", return_value="abc"):
+        result = cli_app._prompt_pick_file(tmp_path, [".pdf"], "notice")
+
+    assert result is None
+    cli_app.poutput.assert_called_with("Invalid input. Please enter a number.")
+
+
+def test_prompt_pick_file_excludes_given_paths(cli_app, tmp_path):
+    pdf1 = tmp_path / "a.pdf"
+    pdf2 = tmp_path / "b.pdf"
+    pdf1.touch()
+    pdf2.touch()
+    cli_app.poutput = MagicMock()
+
+    with patch("lexiflow.cli.prompt", return_value="1"):
+        result = cli_app._prompt_pick_file(
+            tmp_path, [".pdf"], "pbs", exclude={pdf1}
+        )
+
+    assert result == pdf2
+
+
+def test_prompt_pick_job_id_valid(cli_app, mock_transcriptor, tmp_path):
+    mock_transcriptor.return_value.get_job_directory.return_value = tmp_path
+
+    with patch("lexiflow.cli.prompt", return_value="5"):
+        result = cli_app._prompt_pick_job_id()
+
+    assert result == 5
+    mock_transcriptor.return_value.get_job_directory.assert_called_once_with(5)
+
+
+def test_prompt_pick_job_id_not_found(cli_app, mock_transcriptor):
+    mock_transcriptor.return_value.get_job_directory.side_effect = ValueError(
+        "No job found with id 999"
+    )
+    cli_app.poutput = MagicMock()
+
+    with patch("lexiflow.cli.prompt", return_value="999"):
+        result = cli_app._prompt_pick_job_id()
+
+    assert result is None
+    cli_app.poutput.assert_called_with("Error: No job found with id 999")
+
+
+def test_prompt_pick_job_id_non_numeric(cli_app):
+    cli_app.poutput = MagicMock()
+
+    with patch("lexiflow.cli.prompt", return_value="abc"):
+        result = cli_app._prompt_pick_job_id()
+
+    assert result is None
+    cli_app.poutput.assert_called_with("Invalid input. Please enter a number.")
+
+
+def test_resolve_job_context_uses_explicit_job_id(cli_app, mock_transcriptor, tmp_path):
+    mock_transcriptor.return_value.api.get_jobs.return_value = [
+        {"id": 5, "job_path": str(tmp_path / "audio.mp3")}
+    ]
+
+    result = cli_app._resolve_job_context(Namespace(job_id=5))
+
+    assert result == (
+        {"id": 5, "job_path": str(tmp_path / "audio.mp3")},
+        tmp_path,
+    )
+    mock_transcriptor.return_value.api.get_jobs.assert_called_once_with(
+        conditions={"id": [("=", 5)]}
+    )
+
+
+def test_resolve_job_context_prompts_when_job_id_missing(
+    cli_app, mock_transcriptor, tmp_path
+):
+    mock_transcriptor.return_value.get_job_directory.return_value = tmp_path
+    mock_transcriptor.return_value.api.get_jobs.return_value = [
+        {"id": 7, "job_path": str(tmp_path / "audio.mp3")}
+    ]
+
+    with patch("lexiflow.cli.prompt", return_value="7"):
+        result = cli_app._resolve_job_context(Namespace(job_id=None))
+
+    assert result == (
+        {"id": 7, "job_path": str(tmp_path / "audio.mp3")},
+        tmp_path,
+    )
+
+
+def test_resolve_job_context_missing_job_returns_none(cli_app, mock_transcriptor):
+    mock_transcriptor.return_value.api.get_jobs.return_value = []
+    cli_app.poutput = MagicMock()
+
+    result = cli_app._resolve_job_context(Namespace(job_id=5))
+
+    assert result is None
+    cli_app.poutput.assert_called_with("Error: No job found with id 5")
+
+
+def test_prompt_pick_provider_returns_selection(cli_app):
+    cli_app.poutput = MagicMock()
+
+    with patch("lexiflow.cli.prompt", return_value="2"):
+        result = cli_app._prompt_pick_provider()
+
+    assert result == "revai"
+    cli_app.poutput.assert_any_call("Select provider:")
+    cli_app.poutput.assert_any_call("1: speechmatics")
+    cli_app.poutput.assert_any_call("2: revai")
+    cli_app.poutput.assert_any_call("3: notebooklm")
+
+
+def test_prompt_pick_provider_invalid_selection(cli_app):
+    cli_app.poutput = MagicMock()
+
+    with patch("lexiflow.cli.prompt", return_value="99"):
+        result = cli_app._prompt_pick_provider()
+
+    assert result is None
+    cli_app.poutput.assert_called_with("Invalid selection.")

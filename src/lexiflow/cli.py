@@ -20,6 +20,7 @@ from lexiflow.pdf import PDFRenderer
 from lexiflow.services import get_service
 from lexiflow.utils import (
     invoice_template_themes,
+    list_candidate_files,
     parse_conditions,
     parse_conditions_as_dict,
     positive_number_validator,
@@ -1800,6 +1801,82 @@ class TranscriptorCMD(cmd2.Cmd):
 
         else:
             self.do_help("process")
+
+    def _prompt_pick_file(
+        self,
+        directory: Path,
+        extensions: list,
+        label: str,
+        exclude: set = frozenset(),
+    ) -> Optional[Path]:
+        candidates = list_candidate_files(directory, extensions, exclude=exclude)
+        if not candidates:
+            self.poutput(f"No {label} candidates found in {directory}")
+            return None
+
+        self.poutput(f"Select {label}:")
+        for i, path in enumerate(candidates):
+            self.poutput(f"{i + 1}: {path.name}")
+
+        try:
+            selection = int(prompt(f"Enter the number of the {label}: "))
+        except ValueError:
+            self.poutput("Invalid input. Please enter a number.")
+            return None
+
+        if 1 <= selection <= len(candidates):
+            return candidates[selection - 1]
+
+        self.poutput("Invalid selection.")
+        return None
+
+    def _prompt_pick_job_id(self) -> Optional[int]:
+        try:
+            job_id = int(prompt("Enter job ID: "))
+        except ValueError:
+            self.poutput("Invalid input. Please enter a number.")
+            return None
+
+        try:
+            self.app.get_job_directory(job_id)
+        except ValueError as e:
+            self.poutput(f"Error: {e}")
+            return None
+
+        return job_id
+
+    def _resolve_job_context(self, args: Namespace):
+        job_id = getattr(args, "job_id", None)
+        if job_id is None:
+            job_id = self._prompt_pick_job_id()
+            if job_id is None:
+                return None
+
+        jobs = self.app.api.get_jobs(conditions={"id": [("=", job_id)]})
+        if not jobs:
+            self.poutput(f"Error: No job found with id {job_id}")
+            return None
+
+        job = jobs[0]
+        job_dir = Path(job["job_path"]).parent
+        return job, job_dir
+
+    def _prompt_pick_provider(self) -> Optional[str]:
+        self.poutput("Select provider:")
+        for i, provider in enumerate(TRANSCRIPTION_PROVIDERS):
+            self.poutput(f"{i + 1}: {provider}")
+
+        try:
+            selection = int(prompt("Enter the number of the provider: "))
+        except ValueError:
+            self.poutput("Invalid input. Please enter a number.")
+            return None
+
+        if 1 <= selection <= len(TRANSCRIPTION_PROVIDERS):
+            return TRANSCRIPTION_PROVIDERS[selection - 1]
+
+        self.poutput("Invalid selection.")
+        return None
 
 
 def main(argv=None):
