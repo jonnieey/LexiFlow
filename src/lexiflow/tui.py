@@ -1009,6 +1009,7 @@ class JobContextMenu(BaseContextMenu):
     def get_menu_items(self):
         yield ListItem(Label("📝 Edit Job"), id="edit-job")
         yield ListItem(Label("🎙️ Transcribe"), id="transcribe-job")
+        yield ListItem(Label("📄 Process Documents"), id="process-documents")
         yield ListItem(Label("🗑️ Delete Job"), id="delete-job")
         yield ListItem(Label("❌ Cancel"), id="cancel-context")
 
@@ -1029,6 +1030,15 @@ class JobContextMenu(BaseContextMenu):
             )
             self.app.push_screen(
                 TranscriptionScreen(job_dict), self.check_edit
+            )
+        elif action == "process-documents":
+            job_dict = (
+                self.item_data.__dict__
+                if hasattr(self.item_data, "__dict__")
+                else dict(self.item_data)
+            )
+            self.app.push_screen(
+                DocumentProcessingScreen(job_dict), self.check_edit
             )
         elif action == "delete-job":
 

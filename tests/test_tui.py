@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
-from lexiflow.tui import AddJobScreen, DocumentProcessingScreen, TranscriptionScreen
+from lexiflow.tui import (
+    AddJobScreen,
+    DocumentProcessingScreen,
+    JobContextMenu,
+    TranscriptionScreen,
+)
 
 
 def _screen_with_mock_app(screen=None):
@@ -445,5 +450,23 @@ def test_doc_format_info_with_metadata(tmp_path):
     )
     try:
         assert "metadata.json found" in screen._format_info()
+    finally:
+        patcher.stop()
+
+
+def test_job_context_menu_process_documents_pushes_screen():
+    job_data = {"id": 5, "job_number": "J1", "job_path": "/tmp/audio.mp3"}
+    menu = JobContextMenu(job_data)
+    patcher = patch.object(type(menu), "app", new_callable=PropertyMock)
+    mock_app_prop = patcher.start()
+    mock_app_prop.return_value = MagicMock()
+    try:
+        menu.handle_action("process-documents")
+
+        menu.app.push_screen.assert_called_once()
+        pushed_screen, callback = menu.app.push_screen.call_args.args
+        assert isinstance(pushed_screen, DocumentProcessingScreen)
+        assert pushed_screen.job_data == job_data
+        assert callback == menu.check_edit
     finally:
         patcher.stop()
