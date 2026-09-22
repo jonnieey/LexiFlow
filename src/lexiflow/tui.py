@@ -1607,8 +1607,20 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
             )
         )
 
-    @on(Button.Pressed, "#doc-poll-btn")
-    async def on_poll_pressed(self):
+    def _existing_transcript_path(self) -> Optional[Path]:
+        job_id = self.job_data.get("id")
+        try:
+            return self.app.transcriptor.get_transcript_path(job_id)
+        except ValueError:
+            return None
+
+    async def _poll_worker(self) -> None:
+        """Runs in the background via run_worker -- see on_poll_pressed."""
+        transcript_path = self._existing_transcript_path()
+        if transcript_path is not None and transcript_path.exists():
+            self.app.notify(f"Transcript already fetched: {transcript_path}")
+            return
+
         try:
             status = await self.do_poll()
         except Exception as e:
@@ -1620,11 +1632,23 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
                 severity="warning",
             )
             return
-        self._update_info_display()
+        try:
+            self._update_info_display()
+        except Exception:
+            pass  # screen may have been dismissed before this landed
         self.app.notify(f"Status: {status}")
 
-    @on(Button.Pressed, "#doc-fetch-btn")
-    async def on_fetch_pressed(self):
+    @on(Button.Pressed, "#doc-poll-btn")
+    def on_poll_pressed(self):
+        self.run_worker(self._poll_worker())
+
+    async def _fetch_worker(self) -> None:
+        """Runs in the background via run_worker -- see on_fetch_pressed."""
+        transcript_path = self._existing_transcript_path()
+        if transcript_path is not None and transcript_path.exists():
+            self.app.notify(f"Transcript already fetched: {transcript_path}")
+            return
+
         try:
             transcript_path = await self.do_fetch()
         except Exception as e:
@@ -1632,8 +1656,15 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
                 f"Error fetching transcript: {e}", severity="error"
             )
             return
-        self._update_info_display()
+        try:
+            self._update_info_display()
+        except Exception:
+            pass  # screen may have been dismissed before this landed
         self.app.notify(f"Transcript saved to {transcript_path}")
+
+    @on(Button.Pressed, "#doc-fetch-btn")
+    def on_fetch_pressed(self):
+        self.run_worker(self._fetch_worker())
 
     @on(Button.Pressed, "#doc-close")
     def on_close_pressed(self):

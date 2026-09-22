@@ -102,6 +102,12 @@ def test_mv_extract_job_file_copies_non_zip(tmp_path):
 def _document_processing_screen_with_mock_app(job_data):
     screen, patcher = _screen_with_mock_app(DocumentProcessingScreen(job_data))
     screen.app.transcriptor = AsyncMock()
+    # get_transcript_path is sync on the real Transcriptor; default to a
+    # path that doesn't exist so tests reach the poll/fetch logic unless
+    # they deliberately override this to exercise the skip-if-exists path.
+    screen.app.transcriptor.get_transcript_path = MagicMock(
+        return_value=Path("/nonexistent/TX001_transcript.txt")
+    )
     return screen, patcher
 
 
@@ -1020,6 +1026,159 @@ def test_doc_process_button_validates_template_before_dispatch():
         screen.app.notify.assert_called_once_with(
             "Select a template.", severity="error"
         )
+    finally:
+        patcher.stop()
+
+
+def test_doc_poll_worker_skips_when_already_fetched(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        transcript_path = tmp_path / "TX001_transcript.txt"
+        transcript_path.write_text("already here")
+        screen.app.transcriptor.get_transcript_path = MagicMock(
+            return_value=transcript_path
+        )
+
+        asyncio.run(screen._poll_worker())
+
+        screen.app.transcriptor.poll_transcription_status.assert_not_called()
+        screen.app.notify.assert_called_once_with(
+            f"Transcript already fetched: {transcript_path}"
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_poll_worker_success_notifies(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        screen.app.transcriptor.poll_transcription_status.return_value = (
+            "in_progress"
+        )
+        asyncio.run(screen._poll_worker())
+
+        screen.app.notify.assert_called_once_with("Status: in_progress")
+    finally:
+        patcher.stop()
+
+
+def test_doc_poll_worker_error_notifies(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        screen.app.transcriptor.poll_transcription_status.side_effect = (
+            ValueError("boom")
+        )
+        asyncio.run(screen._poll_worker())
+
+        screen.app.notify.assert_called_once_with(
+            "Error polling status: boom", severity="error"
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_poll_button_dispatches_via_run_worker():
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": "/tmp/audio.mp3"}
+    )
+    screen.run_worker = MagicMock()
+    try:
+        screen.on_poll_pressed()
+
+        screen.run_worker.assert_called_once()
+        (coro,), _ = screen.run_worker.call_args
+        assert asyncio.iscoroutine(coro)
+        coro.close()
+    finally:
+        patcher.stop()
+
+
+def test_doc_fetch_worker_skips_when_already_fetched(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        transcript_path = tmp_path / "TX001_transcript.txt"
+        transcript_path.write_text("already here")
+        screen.app.transcriptor.get_transcript_path = MagicMock(
+            return_value=transcript_path
+        )
+
+        asyncio.run(screen._fetch_worker())
+
+        screen.app.transcriptor.fetch_transcript.assert_not_called()
+        screen.app.notify.assert_called_once_with(
+            f"Transcript already fetched: {transcript_path}"
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_fetch_worker_success_notifies(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        transcript_path = tmp_path / "TX001_transcript.txt"
+        screen.app.transcriptor.fetch_transcript.return_value = (
+            transcript_path
+        )
+        asyncio.run(screen._fetch_worker())
+
+        screen.app.notify.assert_called_once_with(
+            f"Transcript saved to {transcript_path}"
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_fetch_worker_error_notifies(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        screen.app.transcriptor.fetch_transcript.side_effect = ValueError(
+            "boom"
+        )
+        asyncio.run(screen._fetch_worker())
+
+        screen.app.notify.assert_called_once_with(
+            "Error fetching transcript: boom", severity="error"
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_fetch_button_dispatches_via_run_worker():
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": "/tmp/audio.mp3"}
+    )
+    screen.run_worker = MagicMock()
+    try:
+        screen.on_fetch_pressed()
+
+        screen.run_worker.assert_called_once()
+        (coro,), _ = screen.run_worker.call_args
+        assert asyncio.iscoroutine(coro)
+        coro.close()
     finally:
         patcher.stop()
 
