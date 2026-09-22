@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
+from textual.widgets import Select
 
 from lexiflow.tui import (
     AddJobScreen,
@@ -848,6 +849,172 @@ def test_doc_fill_button_validates_template_before_dispatch():
     try:
         with patch.object(type(screen), "_selected_path", return_value=None):
             screen.on_fill_pressed()
+
+        screen.run_worker.assert_not_called()
+        screen.app.notify.assert_called_once_with(
+            "Select a template.", severity="error"
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_transcribe_worker_success_notifies(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        screen.app.transcriptor.submit_transcription.return_value = "ext-1"
+        asyncio.run(screen._transcribe_worker("revai", use_existing=False))
+
+        screen.app.notify.assert_called_once_with(
+            "Submitted to revai: ext-1"
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_transcribe_worker_error_notifies(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        screen.app.transcriptor.submit_transcription.side_effect = (
+            ValueError("boom")
+        )
+        asyncio.run(screen._transcribe_worker("revai", use_existing=False))
+
+        screen.app.notify.assert_called_once_with(
+            "Error transcribing: boom", severity="error"
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_transcribe_button_dispatches_via_run_worker():
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": "/tmp/audio.mp3"}
+    )
+    screen.run_worker = MagicMock()
+    try:
+        with patch.object(
+            DocumentProcessingScreen,
+            "query_one",
+            return_value=MagicMock(value="revai"),
+        ):
+            screen.on_transcribe_pressed()
+
+        screen.run_worker.assert_called_once()
+        (coro,), _ = screen.run_worker.call_args
+        assert asyncio.iscoroutine(coro)
+        coro.close()
+    finally:
+        patcher.stop()
+
+
+def test_doc_transcribe_button_validates_provider_before_dispatch():
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": "/tmp/audio.mp3"}
+    )
+    screen.run_worker = MagicMock()
+    try:
+        with patch.object(
+            DocumentProcessingScreen,
+            "query_one",
+            return_value=MagicMock(value=Select.BLANK),
+        ):
+            screen.on_transcribe_pressed()
+
+        screen.run_worker.assert_not_called()
+        screen.app.notify.assert_called_once_with(
+            "Select a provider.", severity="error"
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_process_worker_success_notifies(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        screen.app.transcriptor.submit_transcription.return_value = "ext-1"
+        notice = tmp_path / "notice.pdf"
+        pbs = tmp_path / "pbs.pdf"
+        template = tmp_path / "template.docx"
+        with patch("lexiflow.tui.MetadataExtractor") as mock_extractor_cls:
+            mock_extractor_cls.return_value.extract_all.return_value = {}
+            with patch("lexiflow.tui.fill_template"):
+                asyncio.run(
+                    screen._process_worker(
+                        notice, pbs, template, "revai", use_existing=False
+                    )
+                )
+
+        screen.app.notify.assert_called_once_with(
+            "Submitted to revai: ext-1"
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_process_worker_error_notifies(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        asyncio.run(
+            screen._process_worker(None, None, None, "revai")
+        )
+
+        screen.app.notify.assert_called_once_with(
+            "Error processing: Select a template.", severity="error"
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_process_button_dispatches_via_run_worker():
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": "/tmp/audio.mp3"}
+    )
+    screen.run_worker = MagicMock()
+    try:
+        with patch.object(
+            type(screen),
+            "_selected_path",
+            return_value=Path("/tmp/template.docx"),
+        ):
+            with patch.object(
+                DocumentProcessingScreen,
+                "query_one",
+                return_value=MagicMock(value="revai"),
+            ):
+                screen.on_process_pressed()
+
+        screen.run_worker.assert_called_once()
+        (coro,), _ = screen.run_worker.call_args
+        assert asyncio.iscoroutine(coro)
+        coro.close()
+    finally:
+        patcher.stop()
+
+
+def test_doc_process_button_validates_template_before_dispatch():
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": "/tmp/audio.mp3"}
+    )
+    screen.run_worker = MagicMock()
+    try:
+        with patch.object(type(screen), "_selected_path", return_value=None):
+            screen.on_process_pressed()
 
         screen.run_worker.assert_not_called()
         screen.app.notify.assert_called_once_with(

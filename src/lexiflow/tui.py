@@ -1538,35 +1538,42 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
             self._fill_worker(notice, pbs, template, use_existing)
         )
 
-    @on(Button.Pressed, "#doc-transcribe-btn")
-    async def on_transcribe_pressed(self):
-        provider = self.query_one("#doc-provider", Select).value
-        use_existing = self.query_one("#doc-use-metadata", Checkbox).value
-        if not provider or provider is Select.BLANK:
-            self.app.notify("Select a provider.", severity="error")
-            return
+    async def _transcribe_worker(
+        self, provider: str, use_existing: bool
+    ) -> None:
+        """Runs in the background via run_worker -- see
+        on_transcribe_pressed."""
         try:
             external_id = await self.do_transcribe(provider, use_existing)
         except Exception as e:
             self.app.notify(f"Error transcribing: {e}", severity="error")
             return
-        self._update_info_display()
-        self._refresh_metadata_checkbox()
+        try:
+            self._update_info_display()
+            self._refresh_metadata_checkbox()
+        except Exception:
+            pass  # screen may have been dismissed before this landed
         self.app.notify(f"Submitted to {provider}: {external_id}")
 
-    @on(Button.Pressed, "#doc-process-btn")
-    async def on_process_pressed(self):
-        notice = self._selected_path("#doc-notice")
-        pbs = self._selected_path("#doc-pbs")
-        template = self._selected_path("#doc-template")
+    @on(Button.Pressed, "#doc-transcribe-btn")
+    def on_transcribe_pressed(self):
         provider = self.query_one("#doc-provider", Select).value
         use_existing = self.query_one("#doc-use-metadata", Checkbox).value
-        if template is None:
-            self.app.notify("Select a template.", severity="error")
-            return
         if not provider or provider is Select.BLANK:
             self.app.notify("Select a provider.", severity="error")
             return
+        self.run_worker(self._transcribe_worker(provider, use_existing))
+
+    async def _process_worker(
+        self,
+        notice: Optional[Path],
+        pbs: Optional[Path],
+        template: Optional[Path],
+        provider: str,
+        use_existing: bool = True,
+    ) -> None:
+        """Runs in the background via run_worker -- see
+        on_process_pressed."""
         try:
             external_id = await self.do_process(
                 notice, pbs, template, provider, use_existing
@@ -1574,9 +1581,31 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
         except Exception as e:
             self.app.notify(f"Error processing: {e}", severity="error")
             return
-        self._update_info_display()
-        self._refresh_metadata_checkbox()
+        try:
+            self._update_info_display()
+            self._refresh_metadata_checkbox()
+        except Exception:
+            pass  # screen may have been dismissed before this landed
         self.app.notify(f"Submitted to {provider}: {external_id}")
+
+    @on(Button.Pressed, "#doc-process-btn")
+    def on_process_pressed(self):
+        notice = self._selected_path("#doc-notice")
+        pbs = self._selected_path("#doc-pbs")
+        template = self._selected_path("#doc-template")
+        if template is None:
+            self.app.notify("Select a template.", severity="error")
+            return
+        provider = self.query_one("#doc-provider", Select).value
+        use_existing = self.query_one("#doc-use-metadata", Checkbox).value
+        if not provider or provider is Select.BLANK:
+            self.app.notify("Select a provider.", severity="error")
+            return
+        self.run_worker(
+            self._process_worker(
+                notice, pbs, template, provider, use_existing
+            )
+        )
 
     @on(Button.Pressed, "#doc-poll-btn")
     async def on_poll_pressed(self):
