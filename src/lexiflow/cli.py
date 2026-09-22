@@ -488,7 +488,10 @@ process_parser.add_argument(
     help="Transcription provider",
 )
 process_parser.add_argument(
-    "-t", "--template", type=Path, help="Path to docx template to fill"
+    "-t",
+    "--template",
+    type=Path,
+    help="Path to docx template to fill (required -- prompted interactively with -j if omitted)",
 )
 process_parser.add_argument(
     "--wait",
@@ -1835,9 +1838,18 @@ class TranscriptorCMD(cmd2.Cmd):
             self.do_help("fill")
 
     def process(self, args: Namespace):
-        notice, pbs, audio = args.notice, args.pbs, args.audio
+        notice, pbs, audio, template = (
+            args.notice,
+            args.pbs,
+            args.audio,
+            args.template,
+        )
 
-        if notice is None or pbs is None or audio is None:
+        if (
+            (notice is None and pbs is None)
+            or audio is None
+            or (template is None and args.job_id is not None)
+        ):
             context = self._resolve_job_context(args)
             if context is None:
                 return
@@ -1849,18 +1861,32 @@ class TranscriptorCMD(cmd2.Cmd):
                     self.poutput(f"Error: Job file not found: {audio}")
                     return
 
-            if notice is None:
-                notice = self._prompt_pick_file(job_dir, [".pdf"], "notice")
-                if notice is None:
-                    return
-            if pbs is None:
-                pbs = self._prompt_pick_file(
-                    job_dir, [".pdf"], "PBS", exclude={notice}
+            if notice is None and pbs is None:
+                notice = self._prompt_pick_file_optional(
+                    job_dir, [".pdf"], "notice"
                 )
-                if pbs is None:
+                pbs = self._prompt_pick_file_optional(
+                    job_dir,
+                    [".pdf"],
+                    "PBS",
+                    exclude={notice} if notice else set(),
+                )
+
+            if template is None:
+                template = self._prompt_pick_file(
+                    job_dir, [".docx"], "template"
+                )
+                if template is None:
                     return
 
-        output_dir = pbs.parent
+        if notice is None and pbs is None:
+            self.poutput("Error: -n/--notice and/or -p/--pbs is required")
+            return
+        if template is None:
+            self.poutput("Error: -t/--template is required")
+            return
+
+        output_dir = (pbs or notice).parent
 
         try:
             extractor = MetadataExtractor()
@@ -1873,17 +1899,16 @@ class TranscriptorCMD(cmd2.Cmd):
         metadata_path.write_text(json.dumps(metadata, indent=4))
         self.poutput(f"Metadata saved to {metadata_path}")
 
-        if args.template:
-            try:
-                filled_path = fill_template(
-                    args.template,
-                    metadata,
-                    output_dir / f"{args.template.stem}_filled.docx",
-                )
-                self.poutput(f"Filled template saved to {filled_path}")
-            except Exception as e:
-                self.poutput(f"Error filling template: {e}")
-                return
+        try:
+            filled_path = fill_template(
+                template,
+                metadata,
+                output_dir / f"{template.stem}_filled.docx",
+            )
+            self.poutput(f"Filled template saved to {filled_path}")
+        except Exception as e:
+            self.poutput(f"Error filling template: {e}")
+            return
 
         vocabulary = process_metadata_to_vocabulary(metadata)
         output_txt = output_dir / f"{audio.stem}.txt"

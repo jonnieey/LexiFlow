@@ -2,7 +2,7 @@ import json
 import shutil
 from argparse import Namespace
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -1316,14 +1316,16 @@ def _process_paths(tmp_path):
     notice = tmp_path / "notice.pdf"
     pbs = tmp_path / "pbs.pdf"
     audio = tmp_path / "audio.mp3"
+    template = tmp_path / "template.docx"
     notice.write_bytes(b"%PDF-1.4 fake")
     pbs.write_bytes(b"%PDF-1.4 fake")
     audio.write_bytes(b"fake audio")
-    return notice, pbs, audio
+    template.write_bytes(b"fake docx")
+    return notice, pbs, audio, template
 
 
 def test_do_process_submits_without_wait(cli_app, tmp_path):
-    notice, pbs, audio = _process_paths(tmp_path)
+    notice, pbs, audio, template = _process_paths(tmp_path)
     cli_app.poutput = MagicMock()
 
     mock_service = AsyncMock()
@@ -1334,9 +1336,11 @@ def test_do_process_submits_without_wait(cli_app, tmp_path):
             "WITNESS_NAME": "Jane Doe"
         }
         with patch("lexiflow.cli.get_service", return_value=mock_service):
-            cli_app.onecmd(
-                f"process -n {notice} -p {pbs} -a {audio} -P revai"
-            )
+            with patch("lexiflow.cli.fill_template") as mock_fill:
+                mock_fill.return_value = tmp_path / "template_filled.docx"
+                cli_app.onecmd(
+                    f"process -n {notice} -p {pbs} -a {audio} -t {template} -P revai"
+                )
 
     mock_service.submit_job.assert_called_once()
     submit_args, submit_kwargs = mock_service.submit_job.call_args
@@ -1349,9 +1353,7 @@ def test_do_process_submits_without_wait(cli_app, tmp_path):
 
 
 def test_do_process_with_template_fills_it(cli_app, tmp_path):
-    notice, pbs, audio = _process_paths(tmp_path)
-    template = tmp_path / "template.docx"
-    template.write_bytes(b"fake docx")
+    notice, pbs, audio, template = _process_paths(tmp_path)
 
     mock_service = AsyncMock()
     mock_service.submit_job.return_value = "ext-job-1"
@@ -1370,8 +1372,44 @@ def test_do_process_with_template_fills_it(cli_app, tmp_path):
     )
 
 
+def test_do_process_notice_only_succeeds(cli_app, tmp_path):
+    notice, pbs, audio, template = _process_paths(tmp_path)
+
+    mock_service = AsyncMock()
+    mock_service.submit_job.return_value = "ext-job-1"
+
+    with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
+        mock_extractor_cls.return_value.extract_all.return_value = {"A": "1"}
+        with patch("lexiflow.cli.get_service", return_value=mock_service):
+            with patch("lexiflow.cli.fill_template") as mock_fill:
+                mock_fill.return_value = tmp_path / "template_filled.docx"
+                cli_app.onecmd(
+                    f"process -n {notice} -a {audio} -t {template} -P revai"
+                )
+
+    mock_extractor_cls.return_value.extract_all.assert_called_once_with(
+        notice, None
+    )
+    mock_service.submit_job.assert_called_once()
+
+
+def test_do_process_no_template_and_no_job_context_errors(cli_app, tmp_path):
+    notice, pbs, audio, template = _process_paths(tmp_path)
+    cli_app.poutput = MagicMock()
+
+    mock_service = AsyncMock()
+
+    with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
+        with patch("lexiflow.cli.get_service", return_value=mock_service):
+            cli_app.onecmd(f"process -n {notice} -p {pbs} -a {audio} -P revai")
+
+    mock_extractor_cls.assert_not_called()
+    mock_service.submit_job.assert_not_called()
+    cli_app.poutput.assert_called_with("Error: -t/--template is required")
+
+
 def test_do_process_wait_polls_until_transcribed(cli_app, tmp_path):
-    notice, pbs, audio = _process_paths(tmp_path)
+    notice, pbs, audio, template = _process_paths(tmp_path)
     cli_app.poutput = MagicMock()
 
     mock_service = AsyncMock()
@@ -1382,10 +1420,12 @@ def test_do_process_wait_polls_until_transcribed(cli_app, tmp_path):
     with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
         mock_extractor_cls.return_value.extract_all.return_value = {}
         with patch("lexiflow.cli.get_service", return_value=mock_service):
-            with patch("lexiflow.cli.asyncio.sleep", new=AsyncMock()):
-                cli_app.onecmd(
-                    f"process -n {notice} -p {pbs} -a {audio} -P revai --wait"
-                )
+            with patch("lexiflow.cli.fill_template") as mock_fill:
+                mock_fill.return_value = tmp_path / "template_filled.docx"
+                with patch("lexiflow.cli.asyncio.sleep", new=AsyncMock()):
+                    cli_app.onecmd(
+                        f"process -n {notice} -p {pbs} -a {audio} -t {template} -P revai --wait"
+                    )
 
     mock_service.get_transcript.assert_called_once_with("ext-job-1")
     output_txt = pbs.parent / "audio.txt"
@@ -1394,7 +1434,7 @@ def test_do_process_wait_polls_until_transcribed(cli_app, tmp_path):
 
 
 def test_do_process_wait_reports_failure(cli_app, tmp_path):
-    notice, pbs, audio = _process_paths(tmp_path)
+    notice, pbs, audio, template = _process_paths(tmp_path)
     cli_app.poutput = MagicMock()
 
     mock_service = AsyncMock()
@@ -1404,17 +1444,19 @@ def test_do_process_wait_reports_failure(cli_app, tmp_path):
     with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
         mock_extractor_cls.return_value.extract_all.return_value = {}
         with patch("lexiflow.cli.get_service", return_value=mock_service):
-            with patch("lexiflow.cli.asyncio.sleep", new=AsyncMock()):
-                cli_app.onecmd(
-                    f"process -n {notice} -p {pbs} -a {audio} -P revai --wait"
-                )
+            with patch("lexiflow.cli.fill_template") as mock_fill:
+                mock_fill.return_value = tmp_path / "template_filled.docx"
+                with patch("lexiflow.cli.asyncio.sleep", new=AsyncMock()):
+                    cli_app.onecmd(
+                        f"process -n {notice} -p {pbs} -a {audio} -t {template} -P revai --wait"
+                    )
 
     mock_service.get_transcript.assert_not_called()
     cli_app.poutput.assert_any_call("Transcription failed.")
 
 
 def test_do_process_extract_error_stops_before_submit(cli_app, tmp_path):
-    notice, pbs, audio = _process_paths(tmp_path)
+    notice, pbs, audio, template = _process_paths(tmp_path)
     cli_app.poutput = MagicMock()
 
     mock_service = AsyncMock()
@@ -1425,7 +1467,7 @@ def test_do_process_extract_error_stops_before_submit(cli_app, tmp_path):
         )
         with patch("lexiflow.cli.get_service", return_value=mock_service):
             cli_app.onecmd(
-                f"process -n {notice} -p {pbs} -a {audio} -P revai"
+                f"process -n {notice} -p {pbs} -a {audio} -t {template} -P revai"
             )
 
     mock_service.submit_job.assert_not_called()
@@ -1435,7 +1477,7 @@ def test_do_process_extract_error_stops_before_submit(cli_app, tmp_path):
 def test_do_process_interactive_auto_fills_audio_picks_notice_and_pbs(
     cli_app, mock_transcriptor, tmp_path
 ):
-    notice, pbs, audio = _process_paths(tmp_path)
+    notice, pbs, audio, template = _process_paths(tmp_path)
     mock_transcriptor.return_value.api.get_jobs.return_value = [
         {"id": 739, "job_path": str(audio)}
     ]
@@ -1446,12 +1488,17 @@ def test_do_process_interactive_auto_fills_audio_picks_notice_and_pbs(
     with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
         mock_extractor_cls.return_value.extract_all.return_value = {}
         with patch("lexiflow.cli.get_service", return_value=mock_service):
-            with patch("lexiflow.cli.prompt", side_effect=["1", "1"]):
-                cli_app.onecmd("process -j 739 -P revai")
+            with patch("lexiflow.cli.fill_template") as mock_fill:
+                mock_fill.return_value = tmp_path / "template_filled.docx"
+                with patch(
+                    "lexiflow.cli.prompt", side_effect=["1", "1", "1"]
+                ):
+                    cli_app.onecmd("process -j 739 -P revai")
 
     mock_extractor_cls.return_value.extract_all.assert_called_once_with(
         notice, pbs
     )
+    mock_fill.assert_called_once_with(template, {}, ANY)
     mock_service.submit_job.assert_called_once()
     submit_args, _ = mock_service.submit_job.call_args
     assert submit_args[0] == audio
@@ -1460,7 +1507,7 @@ def test_do_process_interactive_auto_fills_audio_picks_notice_and_pbs(
 def test_do_process_interactive_missing_audio_file_errors(
     cli_app, mock_transcriptor, tmp_path
 ):
-    notice, pbs, audio = _process_paths(tmp_path)
+    notice, pbs, audio, template = _process_paths(tmp_path)
     audio.unlink()
     mock_transcriptor.return_value.api.get_jobs.return_value = [
         {"id": 739, "job_path": str(audio)}
@@ -1479,7 +1526,7 @@ def test_do_process_interactive_missing_audio_file_errors(
 def test_do_process_explicit_audio_skips_auto_fill(
     cli_app, mock_transcriptor, tmp_path
 ):
-    notice, pbs, audio = _process_paths(tmp_path)
+    notice, pbs, audio, template = _process_paths(tmp_path)
     other_audio = tmp_path / "other.mp3"
     other_audio.write_bytes(b"fake audio")
     mock_transcriptor.return_value.api.get_jobs.return_value = [
@@ -1492,9 +1539,12 @@ def test_do_process_explicit_audio_skips_auto_fill(
     with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
         mock_extractor_cls.return_value.extract_all.return_value = {}
         with patch("lexiflow.cli.get_service", return_value=mock_service):
-            cli_app.onecmd(
-                f"process -j 739 -n {notice} -p {pbs} -a {other_audio} -P revai"
-            )
+            with patch("lexiflow.cli.fill_template") as mock_fill:
+                mock_fill.return_value = tmp_path / "template_filled.docx"
+                with patch("lexiflow.cli.prompt", side_effect=["1"]):
+                    cli_app.onecmd(
+                        f"process -j 739 -n {notice} -p {pbs} -a {other_audio} -P revai"
+                    )
 
     submit_args, _ = mock_service.submit_job.call_args
     assert submit_args[0] == other_audio
