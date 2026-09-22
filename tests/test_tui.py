@@ -7,8 +7,10 @@ import pytest
 
 from lexiflow.tui import (
     AddJobScreen,
+    Dashboard,
     DocumentProcessingScreen,
     JobContextMenu,
+    JobsTable,
     TranscriptionScreen,
 )
 
@@ -812,20 +814,64 @@ def test_doc_format_info_omits_error_line_when_none(tmp_path):
         patcher.stop()
 
 
-def test_job_context_menu_process_documents_pushes_screen():
+def test_job_context_menu_transcribe_job_pushes_document_processing_screen():
     job_data = {"id": 5, "job_number": "J1", "job_path": "/tmp/audio.mp3"}
     menu = JobContextMenu(job_data)
     patcher = patch.object(type(menu), "app", new_callable=PropertyMock)
     mock_app_prop = patcher.start()
     mock_app_prop.return_value = MagicMock()
     try:
-        menu.handle_action("process-documents")
+        menu.handle_action("transcribe-job")
 
         menu.app.push_screen.assert_called_once()
         pushed_screen, callback = menu.app.push_screen.call_args.args
         assert isinstance(pushed_screen, DocumentProcessingScreen)
         assert pushed_screen.job_data == job_data
         assert callback == menu.check_edit
+    finally:
+        patcher.stop()
+
+
+def test_dashboard_action_transcribe_job_pushes_document_processing_screen():
+    dashboard = Dashboard()
+    patcher = patch.object(
+        type(dashboard), "app", new_callable=PropertyMock
+    )
+    mock_app_prop = patcher.start()
+    mock_app_prop.return_value = MagicMock()
+    try:
+        job_data = {"id": 5, "job_number": "J1", "job_path": "/tmp/audio.mp3"}
+        dashboard.app.transcriptor.api.get_jobs.return_value = [job_data]
+        dashboard.selected_items = [5]
+
+        dashboard.action_transcribe_job()
+
+        dashboard.app.push_screen.assert_called_once()
+        pushed_screen, _ = dashboard.app.push_screen.call_args.args
+        assert isinstance(pushed_screen, DocumentProcessingScreen)
+        assert pushed_screen.job_data == job_data
+    finally:
+        patcher.stop()
+
+
+def test_jobs_table_action_transcribe_job_pushes_document_processing_screen():
+    jobs_table = JobsTable()
+    patcher = patch.object(
+        type(jobs_table), "app", new_callable=PropertyMock
+    )
+    mock_app_prop = patcher.start()
+    mock_app_prop.return_value = MagicMock()
+    try:
+        job_data = {"id": 5, "job_number": "J1", "job_path": "/tmp/audio.mp3"}
+        jobs_table.app.transcriptor.api.get_jobs.return_value = [job_data]
+        jobs_table.selected_items = [5]
+
+        jobs_table.action_transcribe_job()
+
+        jobs_table.app.push_screen.assert_called_once()
+        pushed_screen, _ = jobs_table.app.push_screen.call_args.args
+        assert isinstance(pushed_screen, DocumentProcessingScreen)
+        assert pushed_screen.job_data == job_data
     finally:
         patcher.stop()
 

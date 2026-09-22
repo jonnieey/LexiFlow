@@ -735,7 +735,8 @@ class Dashboard(BaseTable):
                 else dict(jobs[0])
             )
             self.app.push_screen(
-                TranscriptionScreen(job_data), lambda _: self.refresh_table()
+                DocumentProcessingScreen(job_data),
+                lambda _: self.refresh_table(),
             )
 
     def action_toggle_select(self):
@@ -910,7 +911,8 @@ class JobsTable(BaseTable):
             if hasattr(job_data, "__dict__"):
                 job_data = job_data.__dict__
             self.app.push_screen(
-                TranscriptionScreen(job_data), lambda _: self.refresh_table()
+                DocumentProcessingScreen(job_data),
+                lambda _: self.refresh_table(),
             )
 
     def action_generate_invoice(self) -> None:
@@ -1010,7 +1012,6 @@ class JobContextMenu(BaseContextMenu):
     def get_menu_items(self):
         yield ListItem(Label("📝 Edit Job"), id="edit-job")
         yield ListItem(Label("🎙️ Transcribe"), id="transcribe-job")
-        yield ListItem(Label("📄 Process Documents"), id="process-documents")
         yield ListItem(
             Label("📂 Open in File Manager"), id="open-file-manager"
         )
@@ -1027,15 +1028,6 @@ class JobContextMenu(BaseContextMenu):
             )
             self.app.push_screen(JobEditScreen(job_dict), self.check_edit)
         elif action == "transcribe-job":
-            job_dict = (
-                self.item_data.__dict__
-                if hasattr(self.item_data, "__dict__")
-                else dict(self.item_data)
-            )
-            self.app.push_screen(
-                TranscriptionScreen(job_dict), self.check_edit
-            )
-        elif action == "process-documents":
             job_dict = (
                 self.item_data.__dict__
                 if hasattr(self.item_data, "__dict__")
