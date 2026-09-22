@@ -810,6 +810,18 @@ def test_dashboard_check_and_fetch_poll_error_notifies(tmp_path):
         patcher.stop()
 
 
+def test_dashboard_action_check_and_fetch_schedules_worker():
+    dashboard = Dashboard()
+    dashboard.run_worker = MagicMock()
+
+    dashboard.action_check_and_fetch()
+
+    dashboard.run_worker.assert_called_once()
+    (coro,), _ = dashboard.run_worker.call_args
+    assert asyncio.iscoroutine(coro)
+    coro.close()
+
+
 def test_dashboard_action_transcribe_job_pushes_document_processing_screen():
     dashboard = Dashboard()
     patcher = patch.object(

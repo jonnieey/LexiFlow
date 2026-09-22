@@ -607,6 +607,9 @@ class Dashboard(BaseTable):
         self.add_vim_binding("a", "Add job", "action_add_job")
         self.add_vim_binding("e", "Edit job", "action_edit_job")
         self.add_vim_binding("t", "Transcribe job", "action_transcribe_job")
+        self.add_vim_binding(
+            "c", "Check & Fetch", "action_check_and_fetch"
+        )
         self.add_vim_binding("x", "Toggle select", "action_toggle_select"),
         self.add_vim_binding(
             "o/Enter", "Context menu", "action_context_menu"
@@ -782,6 +785,13 @@ class Dashboard(BaseTable):
             return
         self.refresh_table()
         self.app.notify(f"Transcript saved to {transcript_path}")
+
+    def action_check_and_fetch(self) -> None:
+        """Vim-key entry point: the custom handle_vim_key dispatch is
+        synchronous, so schedule the async core as a worker instead of
+        calling it directly (which would just create an un-awaited
+        coroutine and silently do nothing)."""
+        self.run_worker(self._check_and_fetch_transcript())
 
     def action_toggle_select(self):
         self.vim_toggle_select_current()
