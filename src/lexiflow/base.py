@@ -1,3 +1,4 @@
+import asyncio
 import csv
 import logging
 import re
@@ -998,6 +999,12 @@ class Transcriptor:
         job = self._get_transcription_job(job_id)
         return Path(job["job_path"]).parent
 
+    def get_transcript_path(self, job_id: int) -> Path:
+        """Where this job's fetched transcript is/would be written."""
+        job = self._get_transcription_job(job_id)
+        job_dir = Path(job["job_path"]).parent
+        return job_dir / f"{job['job_number']}_transcript.txt"
+
     async def submit_transcription(
         self,
         job_id: int,
@@ -1011,7 +1018,7 @@ class Transcriptor:
 
         Returns the provider's external job id.
         """
-        job = self._get_transcription_job(job_id)
+        job = await asyncio.to_thread(self._get_transcription_job, job_id)
         file_path = Path(job["job_path"])
         if not file_path.exists():
             raise FileNotFoundError(f"Job file not found: {file_path}")
@@ -1023,7 +1030,8 @@ class Transcriptor:
                     file_path, additional_vocabulary=additional_vocabulary
                 )
             except Exception as e:
-                self.api.update_jobs(
+                await asyncio.to_thread(
+                    self.api.update_jobs,
                     conditions={"id": [("=", job_id)]},
                     values={"transcription_last_error": str(e)},
                 )
@@ -1031,7 +1039,8 @@ class Transcriptor:
         finally:
             await service.close()
 
-        self.api.update_jobs(
+        await asyncio.to_thread(
+            self.api.update_jobs,
             conditions={"id": [("=", job_id)]},
             values={
                 "provider": provider,
@@ -1050,7 +1059,7 @@ class Transcriptor:
         Returns the new status, or None if the job has no
         provider/external_job_id set yet, or the poll failed.
         """
-        job = self._get_transcription_job(job_id)
+        job = await asyncio.to_thread(self._get_transcription_job, job_id)
         provider = job.get("provider")
         external_job_id = job.get("external_job_id")
         if not provider or not external_job_id:
@@ -1062,7 +1071,8 @@ class Transcriptor:
             try:
                 status_info = await service.get_job_status(external_job_id)
             except Exception as e:
-                self.api.update_jobs(
+                await asyncio.to_thread(
+                    self.api.update_jobs,
                     conditions={"id": [("=", job_id)]},
                     values={
                         "transcription_last_polled_at": polled_at,
@@ -1074,7 +1084,8 @@ class Transcriptor:
             await service.close()
 
         if status_info is None:
-            self.api.update_jobs(
+            await asyncio.to_thread(
+                self.api.update_jobs,
                 conditions={"id": [("=", job_id)]},
                 values={
                     "transcription_last_polled_at": polled_at,
@@ -1086,7 +1097,8 @@ class Transcriptor:
             return None
 
         status = status_info.get("status")
-        self.api.update_jobs(
+        await asyncio.to_thread(
+            self.api.update_jobs,
             conditions={"id": [("=", job_id)]},
             values={
                 "transcription_status": status,
@@ -1107,7 +1119,7 @@ class Transcriptor:
 
         Returns the path to the written transcript file.
         """
-        job = self._get_transcription_job(job_id)
+        job = await asyncio.to_thread(self._get_transcription_job, job_id)
         provider = job.get("provider")
         external_job_id = job.get("external_job_id")
         if not provider or not external_job_id:
@@ -1122,7 +1134,8 @@ class Transcriptor:
                     external_job_id, metadata=metadata
                 )
             except Exception as e:
-                self.api.update_jobs(
+                await asyncio.to_thread(
+                    self.api.update_jobs,
                     conditions={"id": [("=", job_id)]},
                     values={"transcription_last_error": str(e)},
                 )
@@ -1130,11 +1143,13 @@ class Transcriptor:
         finally:
             await service.close()
 
-        job_dir = Path(job["job_path"]).parent
-        transcript_path = job_dir / f"{job['job_number']}_transcript.txt"
-        transcript_path.write_text(transcript_text, encoding="utf-8")
+        transcript_path = self.get_transcript_path(job_id)
+        await asyncio.to_thread(
+            transcript_path.write_text, transcript_text, encoding="utf-8"
+        )
 
-        self.api.update_jobs(
+        await asyncio.to_thread(
+            self.api.update_jobs,
             conditions={"id": [("=", job_id)]},
             values={
                 "transcription_status": "transcribed",

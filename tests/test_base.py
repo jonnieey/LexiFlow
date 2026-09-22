@@ -1051,6 +1051,24 @@ def test_submit_transcription_passes_vocabulary(transcriptor, test_base_dir):
     )
 
 
+def test_submit_transcription_runs_db_calls_in_thread(
+    transcriptor, test_base_dir
+):
+    job_id, job_file = _make_transcription_job(transcriptor, test_base_dir)
+    mock_service = AsyncMock()
+    mock_service.submit_job.return_value = "ext-123"
+
+    with patch("lexiflow.base.get_service", return_value=mock_service):
+        with patch(
+            "lexiflow.base.asyncio.to_thread", wraps=asyncio.to_thread
+        ) as mock_to_thread:
+            asyncio.run(transcriptor.submit_transcription(job_id, "revai"))
+
+    names = [c.args[0].__name__ for c in mock_to_thread.call_args_list]
+    assert "_get_transcription_job" in names
+    assert "update_jobs" in names
+
+
 def test_submit_transcription_missing_job_raises(transcriptor):
     with pytest.raises(ValueError, match="No job found"):
         asyncio.run(transcriptor.submit_transcription(999999, "revai"))
@@ -1110,6 +1128,29 @@ def test_poll_transcription_status_no_provider_returns_none(
     mock_get_service.assert_not_called()
 
 
+def test_poll_transcription_status_runs_db_calls_in_thread(
+    transcriptor, test_base_dir
+):
+    job_id, _ = _make_transcription_job(
+        transcriptor,
+        test_base_dir,
+        provider="revai",
+        external_job_id="ext-123",
+    )
+    mock_service = AsyncMock()
+    mock_service.get_job_status.return_value = {"status": "transcribed"}
+
+    with patch("lexiflow.base.get_service", return_value=mock_service):
+        with patch(
+            "lexiflow.base.asyncio.to_thread", wraps=asyncio.to_thread
+        ) as mock_to_thread:
+            asyncio.run(transcriptor.poll_transcription_status(job_id))
+
+    names = [c.args[0].__name__ for c in mock_to_thread.call_args_list]
+    assert "_get_transcription_job" in names
+    assert "update_jobs" in names
+
+
 def test_poll_transcription_status_failed_poll_returns_none(
     transcriptor, test_base_dir
 ):
@@ -1155,6 +1196,27 @@ def test_fetch_transcript_writes_file_and_updates_status(
     assert job["transcription_status"] == "transcribed"
 
 
+def test_fetch_transcript_runs_db_calls_in_thread(transcriptor, test_base_dir):
+    job_id, _ = _make_transcription_job(
+        transcriptor,
+        test_base_dir,
+        provider="revai",
+        external_job_id="ext-123",
+    )
+    mock_service = AsyncMock()
+    mock_service.get_transcript.return_value = "text"
+
+    with patch("lexiflow.base.get_service", return_value=mock_service):
+        with patch(
+            "lexiflow.base.asyncio.to_thread", wraps=asyncio.to_thread
+        ) as mock_to_thread:
+            asyncio.run(transcriptor.fetch_transcript(job_id))
+
+    names = [c.args[0].__name__ for c in mock_to_thread.call_args_list]
+    assert "_get_transcription_job" in names
+    assert "update_jobs" in names
+
+
 def test_fetch_transcript_passes_metadata(transcriptor, test_base_dir):
     job_id, _ = _make_transcription_job(
         transcriptor,
@@ -1179,6 +1241,26 @@ def test_fetch_transcript_missing_provider_raises(transcriptor, test_base_dir):
 
     with pytest.raises(ValueError, match="no provider/external_job_id"):
         asyncio.run(transcriptor.fetch_transcript(job_id))
+
+
+def test_get_transcript_path_matches_fetch_transcript_output(
+    transcriptor, test_base_dir
+):
+    job_id, job_file = _make_transcription_job(
+        transcriptor,
+        test_base_dir,
+        provider="revai",
+        external_job_id="ext-123",
+    )
+
+    path = transcriptor.get_transcript_path(job_id)
+
+    assert path == job_file.parent / "TX001_transcript.txt"
+
+
+def test_get_transcript_path_missing_job_raises(transcriptor):
+    with pytest.raises(ValueError, match="No job found"):
+        transcriptor.get_transcript_path(999999)
 
 
 # -------- polling metadata (last_polled_at / last_error) --------
