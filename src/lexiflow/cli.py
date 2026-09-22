@@ -1694,24 +1694,26 @@ class TranscriptorCMD(cmd2.Cmd):
 
     def extract(self, args: Namespace):
         notice, pbs = args.notice, args.pbs
-        if notice is None or pbs is None:
+        if notice is None and pbs is None:
             context = self._resolve_job_context(args)
             if context is None:
                 return None
             _, job_dir = context
 
-            if notice is None:
-                notice = self._prompt_pick_file(job_dir, [".pdf"], "notice")
-                if notice is None:
-                    return None
-            if pbs is None:
-                pbs = self._prompt_pick_file(
-                    job_dir, [".pdf"], "PBS", exclude={notice}
-                )
-                if pbs is None:
-                    return None
+            notice = self._prompt_pick_file_optional(
+                job_dir, [".pdf"], "notice"
+            )
+            pbs = self._prompt_pick_file_optional(
+                job_dir,
+                [".pdf"],
+                "PBS",
+                exclude={notice} if notice else set(),
+            )
+            if notice is None and pbs is None:
+                self.poutput("Error: select at least one of notice or PBS.")
+                return None
 
-        output_path = args.output or (pbs.parent / "metadata.json")
+        output_path = args.output or ((pbs or notice).parent / "metadata.json")
         try:
             extractor = MetadataExtractor()
             metadata = extractor.extract_all(notice, pbs)
@@ -1748,12 +1750,7 @@ class TranscriptorCMD(cmd2.Cmd):
                 self.poutput(f"Metadata file not found: {args.metadata}")
                 return
             metadata = json.loads(args.metadata.read_text())
-        elif args.notice:
-            if not args.pbs:
-                self.poutput(
-                    "Error: -p/--pbs is required when using -n/--notice"
-                )
-                return
+        elif args.notice or args.pbs:
             metadata = self.extract(
                 Namespace(
                     job_id=None, notice=args.notice, pbs=args.pbs, output=None
@@ -1790,13 +1787,19 @@ class TranscriptorCMD(cmd2.Cmd):
                     metadata = json.loads(metadata_path.read_text())
 
             if metadata is None:
-                notice = self._prompt_pick_file(job_dir, [".pdf"], "notice")
-                if notice is None:
-                    return
-                pbs = self._prompt_pick_file(
-                    job_dir, [".pdf"], "PBS", exclude={notice}
+                notice = self._prompt_pick_file_optional(
+                    job_dir, [".pdf"], "notice"
                 )
-                if pbs is None:
+                pbs = self._prompt_pick_file_optional(
+                    job_dir,
+                    [".pdf"],
+                    "PBS",
+                    exclude={notice} if notice else set(),
+                )
+                if notice is None and pbs is None:
+                    self.poutput(
+                        "Error: select at least one of notice or PBS."
+                    )
                     return
                 metadata = self.extract(
                     Namespace(job_id=None, notice=notice, pbs=pbs, output=None)
@@ -1969,6 +1972,40 @@ class TranscriptorCMD(cmd2.Cmd):
             self.poutput("Invalid input. Please enter a number.")
             return None
 
+        if 1 <= selection <= len(candidates):
+            return candidates[selection - 1]
+
+        self.poutput("Invalid selection.")
+        return None
+
+    def _prompt_pick_file_optional(
+        self,
+        directory: Path,
+        extensions: list,
+        label: str,
+        exclude: set = frozenset(),
+    ) -> Optional[Path]:
+        """Like _prompt_pick_file, but lets the user skip (0) since this
+        file is one of an and/or pair -- neither notice nor PBS alone is
+        mandatory, only at least one of the two."""
+        candidates = list_candidate_files(directory, extensions, exclude=exclude)
+        if not candidates:
+            self.poutput(f"No {label} candidates found in {directory}")
+            return None
+
+        self.poutput(f"Select {label} (0 to skip):")
+        self.poutput("0: Skip")
+        for i, path in enumerate(candidates):
+            self.poutput(f"{i + 1}: {path.name}")
+
+        try:
+            selection = int(prompt(f"Enter the number of the {label}: "))
+        except ValueError:
+            self.poutput("Invalid input. Please enter a number.")
+            return None
+
+        if selection == 0:
+            return None
         if 1 <= selection <= len(candidates):
             return candidates[selection - 1]
 
