@@ -322,6 +322,88 @@ def test_doc_do_process_raises_without_template(tmp_path):
         patcher.stop()
 
 
+def test_doc_do_transcribe_plain_submit_without_metadata(tmp_path):
+    """No notice/PBS/template/existing metadata.json at all --
+    Transcribe must still work as a plain submit, independent of the
+    other 3 actions."""
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        screen.app.transcriptor.submit_transcription.return_value = "ext-1"
+        external_id = asyncio.run(
+            screen.do_transcribe("revai", use_existing=False)
+        )
+
+        screen.app.transcriptor.submit_transcription.assert_awaited_once_with(
+            5, "revai", additional_vocabulary=None
+        )
+        assert external_id == "ext-1"
+        assert screen.job_data["provider"] == "revai"
+        assert screen.job_data["external_job_id"] == "ext-1"
+        assert screen.job_data["transcription_status"] == "in_progress"
+    finally:
+        patcher.stop()
+
+
+def test_doc_do_transcribe_uses_existing_metadata_vocabulary(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    (tmp_path / "metadata.json").write_text(
+        json.dumps({"WITNESS_NAME": "Jane Doe"})
+    )
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        screen.app.transcriptor.submit_transcription.return_value = "ext-1"
+        asyncio.run(screen.do_transcribe("revai", use_existing=True))
+
+        screen.app.transcriptor.submit_transcription.assert_awaited_once_with(
+            5, "revai", additional_vocabulary=["Jane", "Doe"]
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_do_transcribe_propagates_submit_errors(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        screen.app.transcriptor.submit_transcription.side_effect = ValueError(
+            "boom"
+        )
+        with pytest.raises(ValueError, match="boom"):
+            asyncio.run(
+                screen.do_transcribe("revai", use_existing=False)
+            )
+    finally:
+        patcher.stop()
+
+
+def test_doc_do_transcribe_clears_last_error_on_success(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {
+            "id": 5,
+            "job_path": str(job_path),
+            "transcription_last_error": "previous failure",
+        }
+    )
+    try:
+        screen.app.transcriptor.submit_transcription.return_value = "ext-1"
+        asyncio.run(screen.do_transcribe("revai", use_existing=False))
+        assert screen.job_data["transcription_last_error"] is None
+    finally:
+        patcher.stop()
+
+
 def test_doc_do_process_reuses_existing_metadata_without_reextracting(
     tmp_path,
 ):

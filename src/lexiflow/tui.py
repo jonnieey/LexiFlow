@@ -1107,7 +1107,7 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
             yield Select([], id="doc-pbs", prompt="Select PBS PDF")
             yield Label("Template (optional):")
             yield Select([], id="doc-template", prompt="Select template")
-            yield Label("Provider (for Process):")
+            yield Label("Provider (for Transcribe/Process):")
             yield Select(
                 self.TRANSCRIPTION_PROVIDERS,
                 id="doc-provider",
@@ -1116,6 +1116,7 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
             with Horizontal(id="doc-actions"):
                 yield Button("Extract", id="doc-extract-btn")
                 yield Button("Fill Template", id="doc-fill-btn")
+                yield Button("Transcribe", id="doc-transcribe-btn")
                 yield Button(
                     "Process", variant="success", id="doc-process-btn"
                 )
@@ -1261,6 +1262,30 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
         metadata = await self._resolve_metadata(notice, pbs, use_existing)
         return fill_template(template, metadata, None)
 
+    async def do_transcribe(
+        self, provider: str, use_existing: bool = True
+    ) -> str:
+        """Submit this job's audio for transcription on its own --
+        independent of Extract/Fill/Process. Metadata is optional: if
+        use_existing is checked and a metadata.json is present, its
+        vocabulary is included; otherwise submits plain, same as the
+        former standalone Transcribe screen's Submit. Raises on
+        error."""
+        vocabulary = None
+        if use_existing:
+            existing = self._load_existing_metadata()
+            if existing is not None:
+                vocabulary = process_metadata_to_vocabulary(existing)
+        job_id = self.job_data.get("id")
+        external_id = await self.app.transcriptor.submit_transcription(
+            job_id, provider, additional_vocabulary=vocabulary
+        )
+        self.job_data["provider"] = provider
+        self.job_data["external_job_id"] = external_id
+        self.job_data["transcription_status"] = "in_progress"
+        self.job_data["transcription_last_error"] = None
+        return external_id
+
     async def do_process(
         self,
         notice: Optional[Path],
@@ -1351,6 +1376,22 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
             self.app.notify(f"Error filling template: {e}", severity="error")
             return
         self.app.notify(f"Filled template saved to {result_path}")
+
+    @on(Button.Pressed, "#doc-transcribe-btn")
+    async def on_transcribe_pressed(self):
+        provider = self.query_one("#doc-provider", Select).value
+        use_existing = self.query_one("#doc-use-metadata", Checkbox).value
+        if not provider or provider is Select.BLANK:
+            self.app.notify("Select a provider.", severity="error")
+            return
+        try:
+            external_id = await self.do_transcribe(provider, use_existing)
+        except Exception as e:
+            self.app.notify(f"Error transcribing: {e}", severity="error")
+            return
+        self._update_info_display()
+        self._refresh_metadata_checkbox()
+        self.app.notify(f"Submitted to {provider}: {external_id}")
 
     @on(Button.Pressed, "#doc-process-btn")
     async def on_process_pressed(self):

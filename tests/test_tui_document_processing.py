@@ -13,7 +13,7 @@ lexiflow.base.DEFAULT_CONFIG['base_dir'] must be patched together.
 import asyncio
 
 import pytest
-from textual.widgets import Checkbox, Select
+from textual.widgets import Button, Checkbox, Select
 
 import lexiflow.base as base_module
 from lexiflow.tui import DocumentProcessingScreen, TranscriptorTUI
@@ -161,5 +161,36 @@ def test_use_existing_metadata_checkbox_enabled_when_metadata_json_present(
             )
             assert checkbox.disabled is False
             assert checkbox.value is True
+
+    asyncio.run(_run())
+
+
+def test_transcribe_button_renders_alongside_other_actions(
+    isolated_app, tmp_path
+):
+    job_dir, audio = _job_dir_with_files(tmp_path)
+
+    async def _run():
+        async with isolated_app.run_test() as pilot:
+            await pilot.pause()
+            isolated_app.push_screen(
+                DocumentProcessingScreen(
+                    {"id": 1, "job_number": "J1", "job_path": str(audio)}
+                )
+            )
+            await pilot.pause()
+
+            button_ids = {
+                b.id for b in isolated_app.screen.query(Button)
+            }
+            assert {
+                "doc-extract-btn",
+                "doc-fill-btn",
+                "doc-transcribe-btn",
+                "doc-process-btn",
+                "doc-poll-btn",
+                "doc-fetch-btn",
+                "doc-close",
+            } <= button_ids
 
     asyncio.run(_run())
