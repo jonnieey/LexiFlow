@@ -167,14 +167,14 @@ Button.-error {
 /* Modal screens */
 #invoice-preview, #job-edit, #config-edit,
 #client-edit, #rate-edit, #profile-edit, #context-menu,
-#transcription-screen, #document-processing-screen {
+#document-processing-screen {
     width: 90%;
     height: 90%;
     border: double $accent;
     background: $surface;
 }
 #client-edit, #rate-edit, #profile-edit, #context-menu,
-#transcription-screen, #document-processing-screen {
+#document-processing-screen {
     width: 60%;
     height: auto;
     align: center middle;
@@ -186,7 +186,7 @@ Button.-error {
     text-align: center;
     margin-bottom: 1;
 }
-#transcription-info, #doc-info {
+#doc-info {
     margin: 1;
     padding: 1;
     border: solid $panel;
@@ -194,19 +194,11 @@ Button.-error {
     height: auto;
     min-height: 3;
 }
-#transcription-submit-form {
-    height: auto;
-    margin-bottom: 1;
-}
-#transcription-submit-form > Select {
-    margin-bottom: 1;
-}
-#transcription-actions, #doc-actions, #doc-transcription-actions {
+#doc-actions, #doc-transcription-actions {
     height: auto;
     align: center middle;
 }
-#transcription-actions > Button, #doc-actions > Button,
-#doc-transcription-actions > Button {
+#doc-actions > Button, #doc-transcription-actions > Button {
     margin: 0 1;
 }
 #document-processing-screen > Select {

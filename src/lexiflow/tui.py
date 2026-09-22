@@ -1072,172 +1072,17 @@ class JobContextMenu(BaseContextMenu):
         self.dismiss()
 
 
-class TranscriptionScreen(VimModalMixin, ModalScreen):
-    """Submit/poll/fetch external transcription for a job."""
-
-    TRANSCRIPTION_PROVIDERS = [
-        ("Speechmatics", "speechmatics"),
-        ("Rev.ai", "revai"),
-        ("NotebookLM", "notebooklm"),
-    ]
-
-    def __init__(self, job_data: Dict):
-        super().__init__()
-        self.job_data = dict(job_data)
-
-    def compose(self) -> ComposeResult:
-        with Container(id="transcription-screen"):
-            yield Label(
-                f"Transcription: {self.job_data.get('job_number', '')}",
-                classes="transcription-title",
-            )
-            yield Static(id="transcription-info")
-            with Container(id="transcription-submit-form"):
-                yield Label("Provider:")
-                yield Select(
-                    self.TRANSCRIPTION_PROVIDERS,
-                    id="transcription-provider",
-                    prompt="Select a provider",
-                )
-                yield Button(
-                    "Submit", variant="primary", id="transcription-submit"
-                )
-            with Horizontal(id="transcription-actions"):
-                yield Button("Poll Status", id="transcription-poll")
-                yield Button("Fetch Transcript", id="transcription-fetch")
-                yield Button(
-                    "Close", variant="default", id="transcription-close"
-                )
-
-    def on_mount(self):
-        self._update_info_display()
-
-    def _format_info(self) -> str:
-        """Pure formatting, no widget access -- testable directly."""
-        provider = self.job_data.get("provider")
-        if not provider:
-            return "Not yet submitted for transcription."
-
-        external_job_id = self.job_data.get("external_job_id")
-        status = self.job_data.get("transcription_status")
-        lines = [
-            f"Provider: {provider}",
-            f"External ID: {external_job_id}",
-            f"Status: {status or 'unknown'}",
-        ]
-        last_polled_at = self.job_data.get("transcription_last_polled_at")
-        if last_polled_at:
-            lines.append(f"Last polled: {last_polled_at}")
-        last_error = self.job_data.get("transcription_last_error")
-        if last_error:
-            lines.append(f"Last error: {last_error}")
-        return "\n".join(lines)
-
-    def _update_info_display(self):
-        self.query_one("#transcription-info", Static).update(
-            self._format_info()
-        )
-
-    async def do_submit(self, provider: str) -> str:
-        """Submit this job for transcription. Raises on error.
-
-        Kept free of widget access so it's directly testable.
-        """
-        job_id = self.job_data.get("id")
-        external_id = await self.app.transcriptor.submit_transcription(
-            job_id, provider
-        )
-        self.job_data["provider"] = provider
-        self.job_data["external_job_id"] = external_id
-        self.job_data["transcription_status"] = "in_progress"
-        self.job_data["transcription_last_error"] = None
-        return external_id
-
-    async def do_poll(self) -> Optional[str]:
-        """Poll transcription status for this job. Raises on error."""
-        job_id = self.job_data.get("id")
-        status = await self.app.transcriptor.poll_transcription_status(
-            job_id
-        )
-        self.job_data["transcription_last_polled_at"] = (
-            datetime.now().isoformat()
-        )
-        self.job_data["transcription_last_error"] = None
-        if status is not None:
-            self.job_data["transcription_status"] = status
-        return status
-
-    async def do_fetch(self) -> Path:
-        """Fetch the transcript for this job. Raises on error."""
-        job_id = self.job_data.get("id")
-        transcript_path = await self.app.transcriptor.fetch_transcript(
-            job_id
-        )
-        self.job_data["transcription_status"] = "transcribed"
-        self.job_data["transcription_last_error"] = None
-        return transcript_path
-
-    @on(Button.Pressed, "#transcription-submit")
-    async def on_submit_pressed(self):
-        provider = self.query_one("#transcription-provider", Select).value
-        if not provider or provider is Select.BLANK:
-            self.app.notify("Please select a provider.", severity="error")
-            return
-        try:
-            external_id = await self.do_submit(provider)
-        except Exception as e:
-            self.app.notify(
-                f"Error submitting transcription: {e}", severity="error"
-            )
-            return
-        self._update_info_display()
-        self.app.notify(f"Submitted to {provider}: {external_id}")
-
-    @on(Button.Pressed, "#transcription-poll")
-    async def on_poll_pressed(self):
-        try:
-            status = await self.do_poll()
-        except Exception as e:
-            self.app.notify(
-                f"Error polling status: {e}", severity="error"
-            )
-            return
-        if status is None:
-            self.app.notify(
-                "No transcription in progress, or the provider poll failed.",
-                severity="warning",
-            )
-            return
-        self._update_info_display()
-        self.app.notify(f"Status: {status}")
-
-    @on(Button.Pressed, "#transcription-fetch")
-    async def on_fetch_pressed(self):
-        try:
-            transcript_path = await self.do_fetch()
-        except Exception as e:
-            self.app.notify(
-                f"Error fetching transcript: {e}", severity="error"
-            )
-            return
-        self._update_info_display()
-        self.app.notify(f"Transcript saved to {transcript_path}")
-
-    @on(Button.Pressed, "#transcription-close")
-    def on_close_pressed(self):
-        self.dismiss(True)
-
-    def action_escape_dismiss(self) -> None:
-        self.dismiss(True)
-
-
 class DocumentProcessingScreen(VimModalMixin, ModalScreen):
     """Extract metadata / fill a template / process (extract+fill+submit)
     for a job, picking notice/PBS/template files from the job's own
     directory instead of requiring the user to type paths -- the TUI
     equivalent of the CLI's extract/fill/process -j <id> flow."""
 
-    TRANSCRIPTION_PROVIDERS = TranscriptionScreen.TRANSCRIPTION_PROVIDERS
+    TRANSCRIPTION_PROVIDERS = [
+        ("Speechmatics", "speechmatics"),
+        ("Rev.ai", "revai"),
+        ("NotebookLM", "notebooklm"),
+    ]
 
     def __init__(self, job_data: Dict):
         super().__init__()
