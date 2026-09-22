@@ -1265,31 +1265,21 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
         self,
         notice: Optional[Path],
         pbs: Optional[Path],
-        template: Optional[Path],
+        template: Path,
         provider: str,
         use_existing: bool = True,
     ) -> str:
-        """Resolve metadata (reusing existing metadata.json when asked
-        to, else extracting), optionally fill a template, then submit
-        for transcription. With no template selected, also works as a
-        plain submit when no metadata is available at all (matching
-        the former standalone Transcribe screen's Submit behavior) --
-        a template can't be filled without metadata, so that case still
-        raises. Raises on error."""
-        try:
-            metadata = await self._resolve_metadata(
-                notice, pbs, use_existing
-            )
-        except ValueError:
-            if template:
-                raise
-            metadata = None
-
-        if template:
-            await asyncio.to_thread(fill_template, template, metadata, None)
-        vocabulary = (
-            process_metadata_to_vocabulary(metadata) if metadata else None
-        )
+        """Combines Extract+Fill+Transcribe: resolve metadata (reusing
+        existing metadata.json when asked to, else extracting from
+        notice and/or PBS), fill the template, then submit for
+        transcription. Unlike the standalone Transcribe action, a
+        template is mandatory here -- a plain submit with no documents
+        at all is Transcribe's job, not Process's. Raises on error."""
+        if template is None:
+            raise ValueError("Select a template.")
+        metadata = await self._resolve_metadata(notice, pbs, use_existing)
+        await asyncio.to_thread(fill_template, template, metadata, None)
+        vocabulary = process_metadata_to_vocabulary(metadata)
         job_id = self.job_data.get("id")
         external_id = await self.app.transcriptor.submit_transcription(
             job_id, provider, additional_vocabulary=vocabulary
@@ -1369,6 +1359,9 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
         template = self._selected_path("#doc-template")
         provider = self.query_one("#doc-provider", Select).value
         use_existing = self.query_one("#doc-use-metadata", Checkbox).value
+        if template is None:
+            self.app.notify("Select a template.", severity="error")
+            return
         if not provider or provider is Select.BLANK:
             self.app.notify("Select a provider.", severity="error")
             return
