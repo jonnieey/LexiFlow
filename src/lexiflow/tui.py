@@ -753,6 +753,17 @@ class Dashboard(BaseTable):
             self.app.notify("No job selected!", severity="error")
             return
         job_id = self.selected_items[0]
+
+        try:
+            transcript_path = self.app.transcriptor.get_transcript_path(
+                job_id
+            )
+        except ValueError:
+            transcript_path = None
+        if transcript_path is not None and transcript_path.exists():
+            self.app.notify(f"Transcript already fetched: {transcript_path}")
+            return
+
         try:
             status = await self.app.transcriptor.poll_transcription_status(
                 job_id
@@ -803,8 +814,8 @@ class Dashboard(BaseTable):
         self.refresh_table()
 
     @on(Button.Pressed, "#dash-check-fetch")
-    async def on_dash_check_fetch(self):
-        await self._check_and_fetch_transcript()
+    def on_dash_check_fetch(self):
+        self.run_worker(self._check_and_fetch_transcript())
 
     @on(Button.Pressed, "#dash-add-job")
     def on_jobs_add(self):
@@ -1049,6 +1060,17 @@ class JobsTable(BaseTable):
             self.app.notify("No job selected!", severity="error")
             return
         job_id = self.selected_items[0]
+
+        try:
+            transcript_path = self.app.transcriptor.get_transcript_path(
+                job_id
+            )
+        except ValueError:
+            transcript_path = None
+        if transcript_path is not None and transcript_path.exists():
+            self.app.notify(f"Transcript already fetched: {transcript_path}")
+            return
+
         try:
             status = await self.app.transcriptor.poll_transcription_status(
                 job_id
@@ -1097,8 +1119,8 @@ class JobsTable(BaseTable):
 
     # -------- button handlers --------
     @on(Button.Pressed, "#jobs-check-fetch")
-    async def on_jobs_check_fetch(self):
-        await self._check_and_fetch_transcript()
+    def on_jobs_check_fetch(self):
+        self.run_worker(self._check_and_fetch_transcript())
 
     @on(Button.Pressed, "#jobs-add-job")
     def on_jobs_add(self):

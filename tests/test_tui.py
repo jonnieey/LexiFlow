@@ -1,6 +1,7 @@
 import asyncio
 import json
 import zipfile
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
@@ -708,6 +709,12 @@ def test_job_context_menu_transcribe_job_pushes_document_processing_screen():
 def _table_with_mock_app(table):
     table, patcher = _screen_with_mock_app(table)
     table.app.transcriptor = AsyncMock()
+    # get_transcript_path is sync on the real Transcriptor; default to a
+    # path that doesn't exist so tests reach the poll/fetch logic unless
+    # they deliberately override this to exercise the skip-if-exists path.
+    table.app.transcriptor.get_transcript_path = MagicMock(
+        return_value=Path("/nonexistent/TX001_transcript.txt")
+    )
     return table, patcher
 
 
@@ -720,6 +727,28 @@ def test_dashboard_check_and_fetch_no_job_selected(tmp_path):
             "No job selected!", severity="error"
         )
         dashboard.app.transcriptor.poll_transcription_status.assert_not_called()
+    finally:
+        patcher.stop()
+
+
+def test_dashboard_check_and_fetch_skips_poll_when_already_fetched(tmp_path):
+    dashboard, patcher = _table_with_mock_app(Dashboard())
+    try:
+        dashboard.selected_items = [5]
+        transcript_path = tmp_path / "TX001_transcript.txt"
+        transcript_path.write_text("already here")
+        dashboard.app.transcriptor.get_transcript_path = MagicMock(
+            return_value=transcript_path
+        )
+        dashboard.refresh_table = MagicMock()
+
+        asyncio.run(dashboard._check_and_fetch_transcript())
+
+        dashboard.app.transcriptor.poll_transcription_status.assert_not_called()
+        dashboard.app.transcriptor.fetch_transcript.assert_not_called()
+        dashboard.app.notify.assert_called_once_with(
+            f"Transcript already fetched: {transcript_path}"
+        )
     finally:
         patcher.stop()
 
@@ -822,6 +851,18 @@ def test_dashboard_action_check_and_fetch_schedules_worker():
     coro.close()
 
 
+def test_dashboard_check_fetch_button_schedules_worker():
+    dashboard = Dashboard()
+    dashboard.run_worker = MagicMock()
+
+    dashboard.on_dash_check_fetch()
+
+    dashboard.run_worker.assert_called_once()
+    (coro,), _ = dashboard.run_worker.call_args
+    assert asyncio.iscoroutine(coro)
+    coro.close()
+
+
 def test_jobs_table_check_and_fetch_no_job_selected(tmp_path):
     jobs_table, patcher = _table_with_mock_app(JobsTable())
     try:
@@ -831,6 +872,30 @@ def test_jobs_table_check_and_fetch_no_job_selected(tmp_path):
             "No job selected!", severity="error"
         )
         jobs_table.app.transcriptor.poll_transcription_status.assert_not_called()
+    finally:
+        patcher.stop()
+
+
+def test_jobs_table_check_and_fetch_skips_poll_when_already_fetched(
+    tmp_path,
+):
+    jobs_table, patcher = _table_with_mock_app(JobsTable())
+    try:
+        jobs_table.selected_items = [5]
+        transcript_path = tmp_path / "TX001_transcript.txt"
+        transcript_path.write_text("already here")
+        jobs_table.app.transcriptor.get_transcript_path = MagicMock(
+            return_value=transcript_path
+        )
+        jobs_table.refresh_table = MagicMock()
+
+        asyncio.run(jobs_table._check_and_fetch_transcript())
+
+        jobs_table.app.transcriptor.poll_transcription_status.assert_not_called()
+        jobs_table.app.transcriptor.fetch_transcript.assert_not_called()
+        jobs_table.app.notify.assert_called_once_with(
+            f"Transcript already fetched: {transcript_path}"
+        )
     finally:
         patcher.stop()
 
@@ -926,6 +991,18 @@ def test_jobs_table_action_check_and_fetch_schedules_worker():
     jobs_table.run_worker = MagicMock()
 
     jobs_table.action_check_and_fetch()
+
+    jobs_table.run_worker.assert_called_once()
+    (coro,), _ = jobs_table.run_worker.call_args
+    assert asyncio.iscoroutine(coro)
+    coro.close()
+
+
+def test_jobs_table_check_fetch_button_schedules_worker():
+    jobs_table = JobsTable()
+    jobs_table.run_worker = MagicMock()
+
+    jobs_table.on_jobs_check_fetch()
 
     jobs_table.run_worker.assert_called_once()
     (coro,), _ = jobs_table.run_worker.call_args
