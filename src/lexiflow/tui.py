@@ -1431,15 +1431,34 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
     ) -> str:
         """Resolve metadata (reusing existing metadata.json when asked
         to, else extracting), optionally fill a template, then submit
-        for transcription. Raises on error."""
-        metadata = await self._resolve_metadata(notice, pbs, use_existing)
+        for transcription. With no template selected, also works as a
+        plain submit when no metadata is available at all (matching
+        the former standalone Transcribe screen's Submit behavior) --
+        a template can't be filled without metadata, so that case still
+        raises. Raises on error."""
+        try:
+            metadata = await self._resolve_metadata(
+                notice, pbs, use_existing
+            )
+        except ValueError:
+            if template:
+                raise
+            metadata = None
+
         if template:
             await asyncio.to_thread(fill_template, template, metadata, None)
-        vocabulary = process_metadata_to_vocabulary(metadata)
+        vocabulary = (
+            process_metadata_to_vocabulary(metadata) if metadata else None
+        )
         job_id = self.job_data.get("id")
-        return await self.app.transcriptor.submit_transcription(
+        external_id = await self.app.transcriptor.submit_transcription(
             job_id, provider, additional_vocabulary=vocabulary
         )
+        self.job_data["provider"] = provider
+        self.job_data["external_job_id"] = external_id
+        self.job_data["transcription_status"] = "in_progress"
+        self.job_data["transcription_last_error"] = None
+        return external_id
 
     async def do_poll(self) -> Optional[str]:
         """Poll transcription status for this job. Raises on error."""
