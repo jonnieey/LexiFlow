@@ -1205,8 +1205,11 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
             return None
         return Path(value)
 
-    async def do_extract(self, notice: Path, pbs: Path) -> Dict:
-        """Extract metadata for this job. Raises on error.
+    async def do_extract(
+        self, notice: Optional[Path], pbs: Optional[Path]
+    ) -> Dict:
+        """Extract metadata for this job from notice and/or PBS --
+        either one alone is sufficient. Raises on error.
 
         Kept free of widget access so it's directly testable.
         """
@@ -1238,9 +1241,9 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
             if existing is not None:
                 return existing
 
-        if notice is None or pbs is None:
+        if notice is None and pbs is None:
             raise ValueError(
-                "Select both a notice and a PBS file, or check 'Use "
+                "Select a notice and/or a PBS file, or check 'Use "
                 "existing metadata.json'."
             )
         return await self.do_extract(notice, pbs)
@@ -1325,9 +1328,9 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
     async def on_extract_pressed(self):
         notice = self._selected_path("#doc-notice")
         pbs = self._selected_path("#doc-pbs")
-        if notice is None or pbs is None:
+        if notice is None and pbs is None:
             self.app.notify(
-                "Select both a notice and a PBS file.", severity="error"
+                "Select a notice and/or a PBS file.", severity="error"
             )
             return
         try:
