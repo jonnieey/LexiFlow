@@ -1477,15 +1477,12 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
         self.job_data["transcription_last_error"] = None
         return transcript_path
 
-    @on(Button.Pressed, "#doc-extract-btn")
-    async def on_extract_pressed(self):
-        notice = self._selected_path("#doc-notice")
-        pbs = self._selected_path("#doc-pbs")
-        if notice is None and pbs is None:
-            self.app.notify(
-                "Select a notice and/or a PBS file.", severity="error"
-            )
-            return
+    async def _extract_worker(
+        self, notice: Optional[Path], pbs: Optional[Path]
+    ) -> None:
+        """Runs in the background via run_worker so the modal stays
+        interactive while extraction is in flight -- see
+        on_extract_pressed."""
         try:
             await self.do_extract(notice, pbs)
         except Exception as e:
@@ -1493,19 +1490,32 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
                 f"Error extracting metadata: {e}", severity="error"
             )
             return
-        self._update_info_display()
-        self._refresh_metadata_checkbox()
+        try:
+            self._update_info_display()
+            self._refresh_metadata_checkbox()
+        except Exception:
+            pass  # screen may have been dismissed before this landed
         self.app.notify("Metadata extracted and saved.")
 
-    @on(Button.Pressed, "#doc-fill-btn")
-    async def on_fill_pressed(self):
-        template = self._selected_path("#doc-template")
-        if template is None:
-            self.app.notify("Select a template.", severity="error")
-            return
+    @on(Button.Pressed, "#doc-extract-btn")
+    def on_extract_pressed(self):
         notice = self._selected_path("#doc-notice")
         pbs = self._selected_path("#doc-pbs")
-        use_existing = self.query_one("#doc-use-metadata", Checkbox).value
+        if notice is None and pbs is None:
+            self.app.notify(
+                "Select a notice and/or a PBS file.", severity="error"
+            )
+            return
+        self.run_worker(self._extract_worker(notice, pbs))
+
+    async def _fill_worker(
+        self,
+        notice: Optional[Path],
+        pbs: Optional[Path],
+        template: Path,
+        use_existing: bool,
+    ) -> None:
+        """Runs in the background via run_worker -- see on_fill_pressed."""
         try:
             result_path = await self.do_fill(
                 notice, pbs, template, use_existing
@@ -1514,6 +1524,19 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
             self.app.notify(f"Error filling template: {e}", severity="error")
             return
         self.app.notify(f"Filled template saved to {result_path}")
+
+    @on(Button.Pressed, "#doc-fill-btn")
+    def on_fill_pressed(self):
+        template = self._selected_path("#doc-template")
+        if template is None:
+            self.app.notify("Select a template.", severity="error")
+            return
+        notice = self._selected_path("#doc-notice")
+        pbs = self._selected_path("#doc-pbs")
+        use_existing = self.query_one("#doc-use-metadata", Checkbox).value
+        self.run_worker(
+            self._fill_worker(notice, pbs, template, use_existing)
+        )
 
     @on(Button.Pressed, "#doc-transcribe-btn")
     async def on_transcribe_pressed(self):

@@ -688,6 +688,175 @@ def test_doc_format_info_omits_error_line_when_none(tmp_path):
         patcher.stop()
 
 
+# -------- worker dispatch (fire-and-forget button handlers) --------
+
+
+def test_doc_extract_worker_success_notifies(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        notice = tmp_path / "notice.pdf"
+        pbs = tmp_path / "pbs.pdf"
+        with patch("lexiflow.tui.MetadataExtractor") as mock_extractor_cls:
+            mock_extractor_cls.return_value.extract_all.return_value = {
+                "A": "1"
+            }
+            asyncio.run(screen._extract_worker(notice, pbs))
+
+        screen.app.notify.assert_called_once_with(
+            "Metadata extracted and saved."
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_extract_worker_error_notifies(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        notice = tmp_path / "notice.pdf"
+        pbs = tmp_path / "pbs.pdf"
+        with patch("lexiflow.tui.MetadataExtractor") as mock_extractor_cls:
+            mock_extractor_cls.return_value.extract_all.side_effect = (
+                RuntimeError("boom")
+            )
+            asyncio.run(screen._extract_worker(notice, pbs))
+
+        screen.app.notify.assert_called_once_with(
+            "Error extracting metadata: boom", severity="error"
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_extract_button_dispatches_via_run_worker():
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": "/tmp/audio.mp3"}
+    )
+    screen.run_worker = MagicMock()
+    try:
+        with patch.object(
+            type(screen), "_selected_path", return_value=Path("/tmp/notice.pdf")
+        ):
+            screen.on_extract_pressed()
+
+        screen.run_worker.assert_called_once()
+        (coro,), _ = screen.run_worker.call_args
+        assert asyncio.iscoroutine(coro)
+        coro.close()
+    finally:
+        patcher.stop()
+
+
+def test_doc_extract_button_validates_before_dispatch():
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": "/tmp/audio.mp3"}
+    )
+    screen.run_worker = MagicMock()
+    try:
+        with patch.object(type(screen), "_selected_path", return_value=None):
+            screen.on_extract_pressed()
+
+        screen.run_worker.assert_not_called()
+        screen.app.notify.assert_called_once_with(
+            "Select a notice and/or a PBS file.", severity="error"
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_fill_worker_success_notifies(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    (tmp_path / "metadata.json").write_text(json.dumps({"A": "1"}))
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        template = tmp_path / "template.docx"
+        result_path = tmp_path / "template_filled.docx"
+        with patch("lexiflow.tui.fill_template") as mock_fill:
+            mock_fill.return_value = result_path
+            asyncio.run(
+                screen._fill_worker(None, None, template, use_existing=True)
+            )
+
+        screen.app.notify.assert_called_once_with(
+            f"Filled template saved to {result_path}"
+        )
+    finally:
+        patcher.stop()
+
+
+def test_doc_fill_worker_error_notifies(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("fake audio")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        template = tmp_path / "template.docx"
+        asyncio.run(
+            screen._fill_worker(None, None, template, use_existing=False)
+        )
+
+        screen.app.notify.assert_called_once()
+        args, kwargs = screen.app.notify.call_args
+        assert "Error filling template" in args[0]
+        assert kwargs.get("severity") == "error"
+    finally:
+        patcher.stop()
+
+
+def test_doc_fill_button_dispatches_via_run_worker():
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": "/tmp/audio.mp3"}
+    )
+    screen.run_worker = MagicMock()
+    try:
+        with patch.object(
+            type(screen),
+            "_selected_path",
+            return_value=Path("/tmp/template.docx"),
+        ):
+            with patch.object(
+                DocumentProcessingScreen,
+                "query_one",
+                return_value=MagicMock(value=True),
+            ):
+                screen.on_fill_pressed()
+
+        screen.run_worker.assert_called_once()
+        (coro,), _ = screen.run_worker.call_args
+        assert asyncio.iscoroutine(coro)
+        coro.close()
+    finally:
+        patcher.stop()
+
+
+def test_doc_fill_button_validates_template_before_dispatch():
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": "/tmp/audio.mp3"}
+    )
+    screen.run_worker = MagicMock()
+    try:
+        with patch.object(type(screen), "_selected_path", return_value=None):
+            screen.on_fill_pressed()
+
+        screen.run_worker.assert_not_called()
+        screen.app.notify.assert_called_once_with(
+            "Select a template.", severity="error"
+        )
+    finally:
+        patcher.stop()
+
+
 def test_job_context_menu_transcribe_job_pushes_document_processing_screen():
     job_data = {"id": 5, "job_number": "J1", "job_path": "/tmp/audio.mp3"}
     menu = JobContextMenu(job_data)
