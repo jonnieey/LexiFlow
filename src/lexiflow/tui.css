@@ -201,11 +201,12 @@ Button.-error {
 #transcription-submit-form > Select {
     margin-bottom: 1;
 }
-#transcription-actions, #doc-actions {
+#transcription-actions, #doc-actions, #doc-transcription-actions {
     height: auto;
     align: center middle;
 }
-#transcription-actions > Button, #doc-actions > Button {
+#transcription-actions > Button, #doc-actions > Button,
+#doc-transcription-actions > Button {
     margin: 0 1;
 }
 #document-processing-screen > Select {

@@ -536,6 +536,213 @@ def test_doc_format_info_with_metadata(tmp_path):
         patcher.stop()
 
 
+def test_doc_do_poll_updates_status_when_present(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("x")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {
+            "id": 5,
+            "job_path": str(job_path),
+            "provider": "revai",
+            "external_job_id": "ext-1",
+        }
+    )
+    try:
+        screen.app.transcriptor.poll_transcription_status.return_value = (
+            "transcribed"
+        )
+        status = asyncio.run(screen.do_poll())
+
+        screen.app.transcriptor.poll_transcription_status.assert_awaited_once_with(
+            5
+        )
+        assert status == "transcribed"
+        assert screen.job_data["transcription_status"] == "transcribed"
+    finally:
+        patcher.stop()
+
+
+def test_doc_do_poll_leaves_job_data_unchanged_when_none(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("x")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {
+            "id": 5,
+            "job_path": str(job_path),
+            "transcription_status": "in_progress",
+        }
+    )
+    try:
+        screen.app.transcriptor.poll_transcription_status.return_value = None
+        status = asyncio.run(screen.do_poll())
+
+        assert status is None
+        assert screen.job_data["transcription_status"] == "in_progress"
+    finally:
+        patcher.stop()
+
+
+def test_doc_do_poll_records_last_polled_at_and_clears_error(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("x")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {
+            "id": 5,
+            "job_path": str(job_path),
+            "provider": "revai",
+            "external_job_id": "ext-1",
+            "transcription_last_error": "previous failure",
+        }
+    )
+    try:
+        screen.app.transcriptor.poll_transcription_status.return_value = (
+            "transcribed"
+        )
+        asyncio.run(screen.do_poll())
+        assert screen.job_data["transcription_last_polled_at"]
+        assert screen.job_data["transcription_last_error"] is None
+    finally:
+        patcher.stop()
+
+
+def test_doc_do_fetch_updates_status_and_returns_path(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("x")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {
+            "id": 5,
+            "job_path": str(job_path),
+            "provider": "revai",
+            "external_job_id": "ext-1",
+        }
+    )
+    try:
+        transcript_path = tmp_path / "TX001_transcript.txt"
+        screen.app.transcriptor.fetch_transcript.return_value = transcript_path
+        result = asyncio.run(screen.do_fetch())
+
+        screen.app.transcriptor.fetch_transcript.assert_awaited_once_with(5)
+        assert result == transcript_path
+        assert screen.job_data["transcription_status"] == "transcribed"
+    finally:
+        patcher.stop()
+
+
+def test_doc_do_fetch_clears_last_error_on_success(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("x")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {
+            "id": 5,
+            "job_path": str(job_path),
+            "provider": "revai",
+            "external_job_id": "ext-1",
+            "transcription_last_error": "previous failure",
+        }
+    )
+    try:
+        screen.app.transcriptor.fetch_transcript.return_value = (
+            "/tmp/x_transcript.txt"
+        )
+        asyncio.run(screen.do_fetch())
+        assert screen.job_data["transcription_last_error"] is None
+    finally:
+        patcher.stop()
+
+
+def test_doc_format_info_shows_not_yet_submitted(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("x")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {"id": 5, "job_path": str(job_path)}
+    )
+    try:
+        assert "Not yet submitted" in screen._format_info()
+    finally:
+        patcher.stop()
+
+
+def test_doc_format_info_shows_provider_details(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("x")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {
+            "id": 5,
+            "job_path": str(job_path),
+            "provider": "revai",
+            "external_job_id": "ext-1",
+            "transcription_status": "in_progress",
+        }
+    )
+    try:
+        info = screen._format_info()
+        assert "revai" in info
+        assert "ext-1" in info
+        assert "in_progress" in info
+    finally:
+        patcher.stop()
+
+
+def test_doc_format_info_shows_last_polled_at(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("x")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {
+            "id": 5,
+            "job_path": str(job_path),
+            "provider": "revai",
+            "external_job_id": "ext-1",
+            "transcription_status": "in_progress",
+            "transcription_last_polled_at": "2023-01-01T12:00:00",
+        }
+    )
+    try:
+        info = screen._format_info()
+        assert "2023-01-01T12:00:00" in info
+    finally:
+        patcher.stop()
+
+
+def test_doc_format_info_shows_last_error(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("x")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {
+            "id": 5,
+            "job_path": str(job_path),
+            "provider": "revai",
+            "external_job_id": "ext-1",
+            "transcription_status": "in_progress",
+            "transcription_last_error": "Connection timed out",
+        }
+    )
+    try:
+        info = screen._format_info()
+        assert "Connection timed out" in info
+    finally:
+        patcher.stop()
+
+
+def test_doc_format_info_omits_error_line_when_none(tmp_path):
+    job_path = tmp_path / "audio.mp3"
+    job_path.write_text("x")
+    screen, patcher = _document_processing_screen_with_mock_app(
+        {
+            "id": 5,
+            "job_path": str(job_path),
+            "provider": "revai",
+            "external_job_id": "ext-1",
+            "transcription_status": "in_progress",
+            "transcription_last_error": None,
+        }
+    )
+    try:
+        info = screen._format_info()
+        assert "Last error" not in info
+    finally:
+        patcher.stop()
+
+
 def test_job_context_menu_process_documents_pushes_screen():
     job_data = {"id": 5, "job_number": "J1", "job_path": "/tmp/audio.mp3"}
     menu = JobContextMenu(job_data)
