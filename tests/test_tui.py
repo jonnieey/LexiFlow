@@ -822,6 +822,117 @@ def test_dashboard_action_check_and_fetch_schedules_worker():
     coro.close()
 
 
+def test_jobs_table_check_and_fetch_no_job_selected(tmp_path):
+    jobs_table, patcher = _table_with_mock_app(JobsTable())
+    try:
+        asyncio.run(jobs_table._check_and_fetch_transcript())
+
+        jobs_table.app.notify.assert_called_once_with(
+            "No job selected!", severity="error"
+        )
+        jobs_table.app.transcriptor.poll_transcription_status.assert_not_called()
+    finally:
+        patcher.stop()
+
+
+def test_jobs_table_check_and_fetch_no_transcription_in_progress(tmp_path):
+    jobs_table, patcher = _table_with_mock_app(JobsTable())
+    try:
+        jobs_table.selected_items = [5]
+        jobs_table.app.transcriptor.poll_transcription_status.return_value = (
+            None
+        )
+        jobs_table.refresh_table = MagicMock()
+
+        asyncio.run(jobs_table._check_and_fetch_transcript())
+
+        jobs_table.app.transcriptor.poll_transcription_status.assert_awaited_once_with(
+            5
+        )
+        jobs_table.app.transcriptor.fetch_transcript.assert_not_called()
+        jobs_table.app.notify.assert_called_once_with(
+            "No transcription in progress, or the provider poll failed.",
+            severity="warning",
+        )
+        jobs_table.refresh_table.assert_called_once()
+    finally:
+        patcher.stop()
+
+
+def test_jobs_table_check_and_fetch_reports_status_when_not_ready(tmp_path):
+    jobs_table, patcher = _table_with_mock_app(JobsTable())
+    try:
+        jobs_table.selected_items = [5]
+        jobs_table.app.transcriptor.poll_transcription_status.return_value = (
+            "in_progress"
+        )
+        jobs_table.refresh_table = MagicMock()
+
+        asyncio.run(jobs_table._check_and_fetch_transcript())
+
+        jobs_table.app.transcriptor.fetch_transcript.assert_not_called()
+        jobs_table.app.notify.assert_called_once_with("Status: in_progress")
+        jobs_table.refresh_table.assert_called_once()
+    finally:
+        patcher.stop()
+
+
+def test_jobs_table_check_and_fetch_fetches_when_transcribed(tmp_path):
+    jobs_table, patcher = _table_with_mock_app(JobsTable())
+    try:
+        jobs_table.selected_items = [5]
+        jobs_table.app.transcriptor.poll_transcription_status.return_value = (
+            "transcribed"
+        )
+        transcript_path = tmp_path / "TX001_transcript.txt"
+        jobs_table.app.transcriptor.fetch_transcript.return_value = (
+            transcript_path
+        )
+        jobs_table.refresh_table = MagicMock()
+
+        asyncio.run(jobs_table._check_and_fetch_transcript())
+
+        jobs_table.app.transcriptor.fetch_transcript.assert_awaited_once_with(
+            5
+        )
+        jobs_table.app.notify.assert_called_once_with(
+            f"Transcript saved to {transcript_path}"
+        )
+        assert jobs_table.refresh_table.call_count == 1
+    finally:
+        patcher.stop()
+
+
+def test_jobs_table_check_and_fetch_poll_error_notifies(tmp_path):
+    jobs_table, patcher = _table_with_mock_app(JobsTable())
+    try:
+        jobs_table.selected_items = [5]
+        jobs_table.app.transcriptor.poll_transcription_status.side_effect = (
+            ValueError("boom")
+        )
+
+        asyncio.run(jobs_table._check_and_fetch_transcript())
+
+        jobs_table.app.notify.assert_called_once_with(
+            "Error polling status: boom", severity="error"
+        )
+        jobs_table.app.transcriptor.fetch_transcript.assert_not_called()
+    finally:
+        patcher.stop()
+
+
+def test_jobs_table_action_check_and_fetch_schedules_worker():
+    jobs_table = JobsTable()
+    jobs_table.run_worker = MagicMock()
+
+    jobs_table.action_check_and_fetch()
+
+    jobs_table.run_worker.assert_called_once()
+    (coro,), _ = jobs_table.run_worker.call_args
+    assert asyncio.iscoroutine(coro)
+    coro.close()
+
+
 def test_dashboard_action_transcribe_job_pushes_document_processing_screen():
     dashboard = Dashboard()
     patcher = patch.object(

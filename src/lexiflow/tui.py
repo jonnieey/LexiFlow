@@ -834,6 +834,9 @@ class JobsTable(BaseTable):
         self.add_vim_binding(
             "i", "Generate invoice", "action_generate_invoice"
         )
+        self.add_vim_binding(
+            "c", "Check & Fetch", "action_check_and_fetch"
+        )
         self.add_vim_binding("x", "Toggle select", "action_toggle_select"),
         self.add_vim_binding(
             "o/Enter", "Context menu", "action_context_menu"
@@ -850,6 +853,9 @@ class JobsTable(BaseTable):
                 yield Button("Edit Job", id="jobs-edit-job")
                 yield Button(
                     "Transcribe", variant="success", id="jobs-transcribe-job"
+                )
+                yield Button(
+                    "Check & Fetch", variant="warning", id="jobs-check-fetch"
                 )
                 yield Button("Refresh", id="jobs-refresh")
                 yield Button(
@@ -1035,6 +1041,54 @@ class JobsTable(BaseTable):
             InvoicePreviewScreen(html, client_name, selected)
         )
 
+    async def _check_and_fetch_transcript(self) -> None:
+        """Poll transcription status for the selected job and, if it's
+        ready, fetch the transcript in the same step -- lets the user
+        check without opening DocumentProcessingScreen."""
+        if not self.selected_items:
+            self.app.notify("No job selected!", severity="error")
+            return
+        job_id = self.selected_items[0]
+        try:
+            status = await self.app.transcriptor.poll_transcription_status(
+                job_id
+            )
+        except Exception as e:
+            self.app.notify(f"Error polling status: {e}", severity="error")
+            return
+
+        if status is None:
+            self.app.notify(
+                "No transcription in progress, or the provider poll failed.",
+                severity="warning",
+            )
+            self.refresh_table()
+            return
+
+        if status not in ("transcribed", "completed", "done"):
+            self.refresh_table()
+            self.app.notify(f"Status: {status}")
+            return
+
+        try:
+            transcript_path = await self.app.transcriptor.fetch_transcript(
+                job_id
+            )
+        except Exception as e:
+            self.app.notify(
+                f"Error fetching transcript: {e}", severity="error"
+            )
+            return
+        self.refresh_table()
+        self.app.notify(f"Transcript saved to {transcript_path}")
+
+    def action_check_and_fetch(self) -> None:
+        """Vim-key entry point: the custom handle_vim_key dispatch is
+        synchronous, so schedule the async core as a worker instead of
+        calling it directly (which would just create an un-awaited
+        coroutine and silently do nothing)."""
+        self.run_worker(self._check_and_fetch_transcript())
+
     def action_toggle_select(self):
         self.vim_toggle_select_current()
 
@@ -1042,6 +1096,10 @@ class JobsTable(BaseTable):
         self.vim_open_context_current()
 
     # -------- button handlers --------
+    @on(Button.Pressed, "#jobs-check-fetch")
+    async def on_jobs_check_fetch(self):
+        await self._check_and_fetch_transcript()
+
     @on(Button.Pressed, "#jobs-add-job")
     def on_jobs_add(self):
         self.action_add_job()
