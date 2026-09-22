@@ -270,6 +270,35 @@ def test_extract_all_merges_and_sorts(extractor):
     assert list(result.keys()) == ["A_KEY", "B_KEY"]
 
 
+def test_extract_all_notice_only(extractor):
+    with patch.object(
+        extractor, "extract_notice", return_value={"B_KEY": "1"}
+    ) as mock_notice:
+        with patch.object(extractor, "extract_pbs") as mock_pbs:
+            result = extractor.extract_all(Path("notice.pdf"), None)
+
+    mock_notice.assert_called_once_with(Path("notice.pdf"))
+    mock_pbs.assert_not_called()
+    assert result == {"B_KEY": "1"}
+
+
+def test_extract_all_pbs_only(extractor):
+    with patch.object(extractor, "extract_notice") as mock_notice:
+        with patch.object(
+            extractor, "extract_pbs", return_value={"A_KEY": "2"}
+        ) as mock_pbs:
+            result = extractor.extract_all(None, Path("pbs.pdf"))
+
+    mock_notice.assert_not_called()
+    mock_pbs.assert_called_once_with(Path("pbs.pdf"))
+    assert result == {"A_KEY": "2"}
+
+
+def test_extract_all_raises_without_either(extractor):
+    with pytest.raises(ValueError, match="At least one"):
+        extractor.extract_all(None, None)
+
+
 # -------- map_to_template --------
 
 

@@ -44,10 +44,21 @@ class MetadataExtractor:
         )
         self.logger = logging.getLogger(f"{__name__}.MetadataExtractor")
 
-    def extract_all(self, notice_path: Path, pbs_path: Path) -> Dict[str, Any]:
-        """Extract and merge metadata from notice and PBS PDFs."""
-        notice_data = self.extract_notice(notice_path)
-        pbs_data = self.extract_pbs(pbs_path)
+    def extract_all(
+        self,
+        notice_path: Optional[Path] = None,
+        pbs_path: Optional[Path] = None,
+    ) -> Dict[str, Any]:
+        """Extract and merge metadata from notice and/or PBS PDFs --
+        either one alone is sufficient."""
+        if notice_path is None and pbs_path is None:
+            raise ValueError(
+                "At least one of notice_path or pbs_path is required."
+            )
+        notice_data = (
+            self.extract_notice(notice_path) if notice_path is not None else {}
+        )
+        pbs_data = self.extract_pbs(pbs_path) if pbs_path is not None else {}
         data = {**notice_data, **pbs_data}
         return dict(sorted(data.items()))
 
