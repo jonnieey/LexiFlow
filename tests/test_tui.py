@@ -705,6 +705,111 @@ def test_job_context_menu_transcribe_job_pushes_document_processing_screen():
         patcher.stop()
 
 
+def _table_with_mock_app(table):
+    table, patcher = _screen_with_mock_app(table)
+    table.app.transcriptor = AsyncMock()
+    return table, patcher
+
+
+def test_dashboard_check_and_fetch_no_job_selected(tmp_path):
+    dashboard, patcher = _table_with_mock_app(Dashboard())
+    try:
+        asyncio.run(dashboard._check_and_fetch_transcript())
+
+        dashboard.app.notify.assert_called_once_with(
+            "No job selected!", severity="error"
+        )
+        dashboard.app.transcriptor.poll_transcription_status.assert_not_called()
+    finally:
+        patcher.stop()
+
+
+def test_dashboard_check_and_fetch_no_transcription_in_progress(tmp_path):
+    dashboard, patcher = _table_with_mock_app(Dashboard())
+    try:
+        dashboard.selected_items = [5]
+        dashboard.app.transcriptor.poll_transcription_status.return_value = (
+            None
+        )
+        dashboard.refresh_table = MagicMock()
+
+        asyncio.run(dashboard._check_and_fetch_transcript())
+
+        dashboard.app.transcriptor.poll_transcription_status.assert_awaited_once_with(
+            5
+        )
+        dashboard.app.transcriptor.fetch_transcript.assert_not_called()
+        dashboard.app.notify.assert_called_once_with(
+            "No transcription in progress, or the provider poll failed.",
+            severity="warning",
+        )
+        dashboard.refresh_table.assert_called_once()
+    finally:
+        patcher.stop()
+
+
+def test_dashboard_check_and_fetch_reports_status_when_not_ready(tmp_path):
+    dashboard, patcher = _table_with_mock_app(Dashboard())
+    try:
+        dashboard.selected_items = [5]
+        dashboard.app.transcriptor.poll_transcription_status.return_value = (
+            "in_progress"
+        )
+        dashboard.refresh_table = MagicMock()
+
+        asyncio.run(dashboard._check_and_fetch_transcript())
+
+        dashboard.app.transcriptor.fetch_transcript.assert_not_called()
+        dashboard.app.notify.assert_called_once_with("Status: in_progress")
+        dashboard.refresh_table.assert_called_once()
+    finally:
+        patcher.stop()
+
+
+def test_dashboard_check_and_fetch_fetches_when_transcribed(tmp_path):
+    dashboard, patcher = _table_with_mock_app(Dashboard())
+    try:
+        dashboard.selected_items = [5]
+        dashboard.app.transcriptor.poll_transcription_status.return_value = (
+            "transcribed"
+        )
+        transcript_path = tmp_path / "TX001_transcript.txt"
+        dashboard.app.transcriptor.fetch_transcript.return_value = (
+            transcript_path
+        )
+        dashboard.refresh_table = MagicMock()
+
+        asyncio.run(dashboard._check_and_fetch_transcript())
+
+        dashboard.app.transcriptor.fetch_transcript.assert_awaited_once_with(
+            5
+        )
+        dashboard.app.notify.assert_called_once_with(
+            f"Transcript saved to {transcript_path}"
+        )
+        assert dashboard.refresh_table.call_count == 1
+    finally:
+        patcher.stop()
+
+
+def test_dashboard_check_and_fetch_poll_error_notifies(tmp_path):
+    dashboard, patcher = _table_with_mock_app(Dashboard())
+    try:
+        dashboard.selected_items = [5]
+        dashboard.app.transcriptor.poll_transcription_status.side_effect = (
+            ValueError("boom")
+        )
+
+        asyncio.run(dashboard._check_and_fetch_transcript())
+
+        dashboard.app.notify.assert_called_once_with(
+            "Error polling status: boom", severity="error"
+        )
+        dashboard.app.transcriptor.fetch_transcript.assert_not_called()
+    finally:
+        patcher.stop()
+
+
 def test_dashboard_action_transcribe_job_pushes_document_processing_screen():
     dashboard = Dashboard()
     patcher = patch.object(

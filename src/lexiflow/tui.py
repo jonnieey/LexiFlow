@@ -624,6 +624,9 @@ class Dashboard(BaseTable):
                 yield Button(
                     "Transcribe", variant="success", id="dash-transcribe-job"
                 )
+                yield Button(
+                    "Check & Fetch", variant="warning", id="dash-check-fetch"
+                )
                 yield Button("Refresh", id="dash-refresh")
 
     def get_table(self) -> DataTable:
@@ -739,6 +742,47 @@ class Dashboard(BaseTable):
                 lambda _: self.refresh_table(),
             )
 
+    async def _check_and_fetch_transcript(self) -> None:
+        """Poll transcription status for the selected job and, if it's
+        ready, fetch the transcript in the same step -- lets the user
+        check without opening DocumentProcessingScreen."""
+        if not self.selected_items:
+            self.app.notify("No job selected!", severity="error")
+            return
+        job_id = self.selected_items[0]
+        try:
+            status = await self.app.transcriptor.poll_transcription_status(
+                job_id
+            )
+        except Exception as e:
+            self.app.notify(f"Error polling status: {e}", severity="error")
+            return
+
+        if status is None:
+            self.app.notify(
+                "No transcription in progress, or the provider poll failed.",
+                severity="warning",
+            )
+            self.refresh_table()
+            return
+
+        if status not in ("transcribed", "completed", "done"):
+            self.refresh_table()
+            self.app.notify(f"Status: {status}")
+            return
+
+        try:
+            transcript_path = await self.app.transcriptor.fetch_transcript(
+                job_id
+            )
+        except Exception as e:
+            self.app.notify(
+                f"Error fetching transcript: {e}", severity="error"
+            )
+            return
+        self.refresh_table()
+        self.app.notify(f"Transcript saved to {transcript_path}")
+
     def action_toggle_select(self):
         self.vim_toggle_select_current()
 
@@ -747,6 +791,10 @@ class Dashboard(BaseTable):
 
     def action_refresh_table(self):
         self.refresh_table()
+
+    @on(Button.Pressed, "#dash-check-fetch")
+    async def on_dash_check_fetch(self):
+        await self._check_and_fetch_transcript()
 
     @on(Button.Pressed, "#dash-add-job")
     def on_jobs_add(self):
