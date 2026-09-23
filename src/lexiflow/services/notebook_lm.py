@@ -1,8 +1,9 @@
 import logging
+import tempfile
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from notebooklm import NotebookLMClient, SourceStatus, RPCError
+from notebooklm import NotebookLMClient, ReportFormat, SourceStatus, RPCError
 
 from .base import TranscriptionService
 from ..config import settings
@@ -119,13 +120,31 @@ Vocabulary List:
 
         logger.debug("NotebookLM prompt (includes case metadata): %s", prompt)
         try:
-            result = await self.client.chat.ask(
-                self.notebook_id, question=prompt, source_ids=[job_id]
+            status = await self.client.artifacts.generate_report(
+                self.notebook_id,
+                report_format=ReportFormat.CUSTOM,
+                source_ids=[job_id],
+                custom_prompt=prompt,
             )
+            final_status = await self.client.artifacts.wait_for_completion(
+                self.notebook_id, status.task_id
+            )
+            if final_status.is_failed:
+                raise RuntimeError(
+                    f"Failed to get transcript: {final_status.error}"
+                )
+
+            with tempfile.NamedTemporaryFile(suffix=".md", delete=False) as tmp:
+                tmp_path = tmp.name
+            try:
+                await self.client.artifacts.download_report(
+                    self.notebook_id, tmp_path, artifact_id=status.task_id
+                )
+                return Path(tmp_path).read_text(encoding="utf-8")
+            finally:
+                Path(tmp_path).unlink(missing_ok=True)
         except RPCError as e:
             raise RuntimeError(f"Failed to get transcript: {e}")
-
-        return result.answer
 
     async def close(self) -> None:
         """Close the NotebookLM client if it was opened."""
