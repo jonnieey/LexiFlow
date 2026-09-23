@@ -1506,7 +1506,14 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
                 "Select a notice and/or a PBS file.", severity="error"
             )
             return
-        self.run_worker(self._extract_worker(notice, pbs))
+        # Dispatched via the App, not the screen: a screen-bound
+        # run_worker is cancelled when this ModalScreen is dismissed
+        # (confirmed empirically), which would silently kill an
+        # in-flight operation the moment the user closes the modal --
+        # the opposite of "let the user keep using the app". The App
+        # outlives the screen, so app.run_worker keeps running
+        # regardless of what's on the screen stack.
+        self.app.run_worker(self._extract_worker(notice, pbs))
 
     async def _fill_worker(
         self,
@@ -1534,7 +1541,7 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
         notice = self._selected_path("#doc-notice")
         pbs = self._selected_path("#doc-pbs")
         use_existing = self.query_one("#doc-use-metadata", Checkbox).value
-        self.run_worker(
+        self.app.run_worker(
             self._fill_worker(notice, pbs, template, use_existing)
         )
 
@@ -1562,7 +1569,7 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
         if not provider or provider is Select.BLANK:
             self.app.notify("Select a provider.", severity="error")
             return
-        self.run_worker(self._transcribe_worker(provider, use_existing))
+        self.app.run_worker(self._transcribe_worker(provider, use_existing))
 
     async def _process_worker(
         self,
@@ -1601,7 +1608,7 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
         if not provider or provider is Select.BLANK:
             self.app.notify("Select a provider.", severity="error")
             return
-        self.run_worker(
+        self.app.run_worker(
             self._process_worker(
                 notice, pbs, template, provider, use_existing
             )
@@ -1640,7 +1647,7 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
 
     @on(Button.Pressed, "#doc-poll-btn")
     def on_poll_pressed(self):
-        self.run_worker(self._poll_worker())
+        self.app.run_worker(self._poll_worker())
 
     async def _fetch_worker(self) -> None:
         """Runs in the background via run_worker -- see on_fetch_pressed."""
@@ -1664,7 +1671,7 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
 
     @on(Button.Pressed, "#doc-fetch-btn")
     def on_fetch_pressed(self):
-        self.run_worker(self._fetch_worker())
+        self.app.run_worker(self._fetch_worker())
 
     @on(Button.Pressed, "#doc-close")
     def on_close_pressed(self):

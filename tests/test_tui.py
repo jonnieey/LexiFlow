@@ -746,15 +746,15 @@ def test_doc_extract_button_dispatches_via_run_worker():
     screen, patcher = _document_processing_screen_with_mock_app(
         {"id": 5, "job_path": "/tmp/audio.mp3"}
     )
-    screen.run_worker = MagicMock()
+    screen.app.run_worker = MagicMock()
     try:
         with patch.object(
             type(screen), "_selected_path", return_value=Path("/tmp/notice.pdf")
         ):
             screen.on_extract_pressed()
 
-        screen.run_worker.assert_called_once()
-        (coro,), _ = screen.run_worker.call_args
+        screen.app.run_worker.assert_called_once()
+        (coro,), _ = screen.app.run_worker.call_args
         assert asyncio.iscoroutine(coro)
         coro.close()
     finally:
@@ -765,12 +765,12 @@ def test_doc_extract_button_validates_before_dispatch():
     screen, patcher = _document_processing_screen_with_mock_app(
         {"id": 5, "job_path": "/tmp/audio.mp3"}
     )
-    screen.run_worker = MagicMock()
+    screen.app.run_worker = MagicMock()
     try:
         with patch.object(type(screen), "_selected_path", return_value=None):
             screen.on_extract_pressed()
 
-        screen.run_worker.assert_not_called()
+        screen.app.run_worker.assert_not_called()
         screen.app.notify.assert_called_once_with(
             "Select a notice and/or a PBS file.", severity="error"
         )
@@ -825,7 +825,7 @@ def test_doc_fill_button_dispatches_via_run_worker():
     screen, patcher = _document_processing_screen_with_mock_app(
         {"id": 5, "job_path": "/tmp/audio.mp3"}
     )
-    screen.run_worker = MagicMock()
+    screen.app.run_worker = MagicMock()
     try:
         with patch.object(
             type(screen),
@@ -839,8 +839,8 @@ def test_doc_fill_button_dispatches_via_run_worker():
             ):
                 screen.on_fill_pressed()
 
-        screen.run_worker.assert_called_once()
-        (coro,), _ = screen.run_worker.call_args
+        screen.app.run_worker.assert_called_once()
+        (coro,), _ = screen.app.run_worker.call_args
         assert asyncio.iscoroutine(coro)
         coro.close()
     finally:
@@ -851,12 +851,12 @@ def test_doc_fill_button_validates_template_before_dispatch():
     screen, patcher = _document_processing_screen_with_mock_app(
         {"id": 5, "job_path": "/tmp/audio.mp3"}
     )
-    screen.run_worker = MagicMock()
+    screen.app.run_worker = MagicMock()
     try:
         with patch.object(type(screen), "_selected_path", return_value=None):
             screen.on_fill_pressed()
 
-        screen.run_worker.assert_not_called()
+        screen.app.run_worker.assert_not_called()
         screen.app.notify.assert_called_once_with(
             "Select a template.", severity="error"
         )
@@ -904,7 +904,7 @@ def test_doc_transcribe_button_dispatches_via_run_worker():
     screen, patcher = _document_processing_screen_with_mock_app(
         {"id": 5, "job_path": "/tmp/audio.mp3"}
     )
-    screen.run_worker = MagicMock()
+    screen.app.run_worker = MagicMock()
     try:
         with patch.object(
             DocumentProcessingScreen,
@@ -913,8 +913,8 @@ def test_doc_transcribe_button_dispatches_via_run_worker():
         ):
             screen.on_transcribe_pressed()
 
-        screen.run_worker.assert_called_once()
-        (coro,), _ = screen.run_worker.call_args
+        screen.app.run_worker.assert_called_once()
+        (coro,), _ = screen.app.run_worker.call_args
         assert asyncio.iscoroutine(coro)
         coro.close()
     finally:
@@ -925,7 +925,7 @@ def test_doc_transcribe_button_validates_provider_before_dispatch():
     screen, patcher = _document_processing_screen_with_mock_app(
         {"id": 5, "job_path": "/tmp/audio.mp3"}
     )
-    screen.run_worker = MagicMock()
+    screen.app.run_worker = MagicMock()
     try:
         with patch.object(
             DocumentProcessingScreen,
@@ -934,7 +934,7 @@ def test_doc_transcribe_button_validates_provider_before_dispatch():
         ):
             screen.on_transcribe_pressed()
 
-        screen.run_worker.assert_not_called()
+        screen.app.run_worker.assert_not_called()
         screen.app.notify.assert_called_once_with(
             "Select a provider.", severity="error"
         )
@@ -991,7 +991,7 @@ def test_doc_process_button_dispatches_via_run_worker():
     screen, patcher = _document_processing_screen_with_mock_app(
         {"id": 5, "job_path": "/tmp/audio.mp3"}
     )
-    screen.run_worker = MagicMock()
+    screen.app.run_worker = MagicMock()
     try:
         with patch.object(
             type(screen),
@@ -1005,8 +1005,8 @@ def test_doc_process_button_dispatches_via_run_worker():
             ):
                 screen.on_process_pressed()
 
-        screen.run_worker.assert_called_once()
-        (coro,), _ = screen.run_worker.call_args
+        screen.app.run_worker.assert_called_once()
+        (coro,), _ = screen.app.run_worker.call_args
         assert asyncio.iscoroutine(coro)
         coro.close()
     finally:
@@ -1017,12 +1017,12 @@ def test_doc_process_button_validates_template_before_dispatch():
     screen, patcher = _document_processing_screen_with_mock_app(
         {"id": 5, "job_path": "/tmp/audio.mp3"}
     )
-    screen.run_worker = MagicMock()
+    screen.app.run_worker = MagicMock()
     try:
         with patch.object(type(screen), "_selected_path", return_value=None):
             screen.on_process_pressed()
 
-        screen.run_worker.assert_not_called()
+        screen.app.run_worker.assert_not_called()
         screen.app.notify.assert_called_once_with(
             "Select a template.", severity="error"
         )
@@ -1093,12 +1093,12 @@ def test_doc_poll_button_dispatches_via_run_worker():
     screen, patcher = _document_processing_screen_with_mock_app(
         {"id": 5, "job_path": "/tmp/audio.mp3"}
     )
-    screen.run_worker = MagicMock()
+    screen.app.run_worker = MagicMock()
     try:
         screen.on_poll_pressed()
 
-        screen.run_worker.assert_called_once()
-        (coro,), _ = screen.run_worker.call_args
+        screen.app.run_worker.assert_called_once()
+        (coro,), _ = screen.app.run_worker.call_args
         assert asyncio.iscoroutine(coro)
         coro.close()
     finally:
@@ -1171,12 +1171,12 @@ def test_doc_fetch_button_dispatches_via_run_worker():
     screen, patcher = _document_processing_screen_with_mock_app(
         {"id": 5, "job_path": "/tmp/audio.mp3"}
     )
-    screen.run_worker = MagicMock()
+    screen.app.run_worker = MagicMock()
     try:
         screen.on_fetch_pressed()
 
-        screen.run_worker.assert_called_once()
-        (coro,), _ = screen.run_worker.call_args
+        screen.app.run_worker.assert_called_once()
+        (coro,), _ = screen.app.run_worker.call_args
         assert asyncio.iscoroutine(coro)
         coro.close()
     finally:
