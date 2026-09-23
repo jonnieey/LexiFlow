@@ -10,3 +10,4 @@ egg-info/
 .python-version
 .venv/
 *.egg-info/
+.sandbox-home/
