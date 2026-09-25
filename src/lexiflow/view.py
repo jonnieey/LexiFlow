@@ -15,6 +15,9 @@ from lexiflow.utils.currency import (
 )
 
 
+PAID_STYLE = "#6272a4"
+
+
 class TranscriptorView:
     MONEY_COLUMNS = {
         "amount",
@@ -278,12 +281,10 @@ class TranscriptorView:
         amount_paid = self._get_attr(item, "amount_paid")
 
         if date_submitted:
-            if (
-                amount is not None
-                and amount_paid is not None
-                and float(amount_paid) < float(amount)
-            ):
-                return "#8be9fd"
+            if amount is not None and amount_paid is not None:
+                if float(amount_paid) < float(amount):
+                    return "#8be9fd"
+                return PAID_STYLE
             return "#f8f8f2"
 
         if date_due:

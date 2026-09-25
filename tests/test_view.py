@@ -178,7 +178,16 @@ class TestItemStyle:
             "amount_paid": 100.0,
         }
         style = view._get_item_style(item)
-        assert style == "#f8f8f2"
+        assert style == "#6272a4"
+
+    def test_submitted_overpaid(self, view):
+        item = {
+            "date_submitted": "2023-01-01",
+            "amount": 100.0,
+            "amount_paid": 150.0,
+        }
+        style = view._get_item_style(item)
+        assert style == "#6272a4"
 
     def test_due_date_passed(self, view):
         past_date = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -250,7 +259,7 @@ class TestPrintTable:
             "amount": 10.0,
             "amount_paid": 10.0,
         }
-        assert view._get_item_style(item) == "#f8f8f2"
+        assert view._get_item_style(item) == "#6272a4"
 
     def test_get_item_style_date_submitted_unpaid(self, view):
         item = {
