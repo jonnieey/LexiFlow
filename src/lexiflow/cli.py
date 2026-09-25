@@ -520,6 +520,7 @@ class TranscriptorCMD(cmd2.Cmd):
             allow_cli_args=False,
             startup_script=alias_script,
             silence_startup_script=True,
+            allow_redirection=False,
         )
 
         self.debug = True
