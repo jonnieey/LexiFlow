@@ -1481,27 +1481,25 @@ def test_do_process_interactive_auto_fills_audio_picks_notice_and_pbs(
     mock_transcriptor.return_value.api.get_jobs.return_value = [
         {"id": 739, "job_path": str(audio)}
     ]
-
-    mock_service = AsyncMock()
-    mock_service.submit_job.return_value = "ext-job-1"
+    cli_app.app.submit_transcription = AsyncMock(return_value="ext-job-1")
 
     with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
         mock_extractor_cls.return_value.extract_all.return_value = {}
-        with patch("lexiflow.cli.get_service", return_value=mock_service):
-            with patch("lexiflow.cli.fill_template") as mock_fill:
-                mock_fill.return_value = tmp_path / "template_filled.docx"
-                with patch(
-                    "lexiflow.cli.prompt", side_effect=["1", "1", "1"]
-                ):
-                    cli_app.onecmd("process -j 739 -P revai")
+        with patch("lexiflow.cli.fill_template") as mock_fill:
+            mock_fill.return_value = tmp_path / "template_filled.docx"
+            with patch("lexiflow.cli.prompt", side_effect=["1", "1", "1"]):
+                cli_app.onecmd("process -j 739 -P revai")
 
     mock_extractor_cls.return_value.extract_all.assert_called_once_with(
         notice, pbs
     )
     mock_fill.assert_called_once_with(template, {}, ANY)
-    mock_service.submit_job.assert_called_once()
-    submit_args, _ = mock_service.submit_job.call_args
-    assert submit_args[0] == audio
+    cli_app.app.submit_transcription.assert_awaited_once_with(
+        739,
+        "revai",
+        additional_vocabulary=ANY,
+        file_path=audio,
+    )
 
 
 def test_do_process_interactive_missing_audio_file_errors(
@@ -1532,22 +1530,100 @@ def test_do_process_explicit_audio_skips_auto_fill(
     mock_transcriptor.return_value.api.get_jobs.return_value = [
         {"id": 739, "job_path": str(audio)}
     ]
-
-    mock_service = AsyncMock()
-    mock_service.submit_job.return_value = "ext-job-1"
+    cli_app.app.submit_transcription = AsyncMock(return_value="ext-job-1")
 
     with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
         mock_extractor_cls.return_value.extract_all.return_value = {}
-        with patch("lexiflow.cli.get_service", return_value=mock_service):
+        with patch("lexiflow.cli.fill_template") as mock_fill:
+            mock_fill.return_value = tmp_path / "template_filled.docx"
+            with patch("lexiflow.cli.prompt", side_effect=["1"]):
+                cli_app.onecmd(
+                    f"process -j 739 -n {notice} -p {pbs} -a {other_audio} -P revai"
+                )
+
+    cli_app.app.submit_transcription.assert_awaited_once_with(
+        739,
+        "revai",
+        additional_vocabulary=ANY,
+        file_path=other_audio,
+    )
+
+
+def test_do_process_job_links_submission_to_job_row(cli_app, tmp_path):
+    notice, pbs, audio, template = _process_paths(tmp_path)
+    cli_app.poutput = MagicMock()
+    cli_app.app.submit_transcription = AsyncMock(return_value="ext-1")
+
+    mock_service = AsyncMock()
+    with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
+        mock_extractor_cls.return_value.extract_all.return_value = {"A": "1"}
+        with patch(
+            "lexiflow.cli.get_service", return_value=mock_service
+        ) as mock_get_service:
             with patch("lexiflow.cli.fill_template") as mock_fill:
                 mock_fill.return_value = tmp_path / "template_filled.docx"
-                with patch("lexiflow.cli.prompt", side_effect=["1"]):
-                    cli_app.onecmd(
-                        f"process -j 739 -n {notice} -p {pbs} -a {other_audio} -P revai"
-                    )
+                cli_app.onecmd(
+                    f"process -j 739 -n {notice} -p {pbs} "
+                    f"-a {audio} -t {template} -P revai"
+                )
 
-    submit_args, _ = mock_service.submit_job.call_args
-    assert submit_args[0] == other_audio
+    cli_app.app.submit_transcription.assert_awaited_once_with(
+        739,
+        "revai",
+        additional_vocabulary=ANY,
+        file_path=audio,
+    )
+    mock_get_service.assert_not_called()
+
+
+def test_do_process_job_wait_polls_and_fetches(cli_app, tmp_path):
+    notice, pbs, audio, template = _process_paths(tmp_path)
+    transcript_path = tmp_path / "TX001_transcript.txt"
+    cli_app.poutput = MagicMock()
+    cli_app.app.submit_transcription = AsyncMock(return_value="ext-1")
+    cli_app.app.poll_transcription_status = AsyncMock(
+        return_value="transcribed"
+    )
+    cli_app.app.fetch_transcript = AsyncMock(return_value=transcript_path)
+
+    with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
+        mock_extractor_cls.return_value.extract_all.return_value = {"A": "1"}
+        with patch("lexiflow.cli.fill_template") as mock_fill:
+            mock_fill.return_value = tmp_path / "template_filled.docx"
+            with patch("lexiflow.cli.asyncio.sleep", new=AsyncMock()):
+                cli_app.onecmd(
+                    f"process -j 739 -n {notice} -p {pbs} "
+                    f"-a {audio} -t {template} -P revai --wait"
+                )
+
+    cli_app.app.poll_transcription_status.assert_awaited_once_with(739)
+    cli_app.app.fetch_transcript.assert_awaited_once_with(
+        739, metadata={"A": "1"}
+    )
+    cli_app.poutput.assert_any_call(
+        f"Transcript saved to {transcript_path}"
+    )
+
+
+def test_do_process_job_wait_reports_failure(cli_app, tmp_path):
+    notice, pbs, audio, template = _process_paths(tmp_path)
+    cli_app.poutput = MagicMock()
+    cli_app.app.submit_transcription = AsyncMock(return_value="ext-1")
+    cli_app.app.poll_transcription_status = AsyncMock(return_value="failed")
+    cli_app.app.fetch_transcript = AsyncMock()
+
+    with patch("lexiflow.cli.MetadataExtractor") as mock_extractor_cls:
+        mock_extractor_cls.return_value.extract_all.return_value = {"A": "1"}
+        with patch("lexiflow.cli.fill_template") as mock_fill:
+            mock_fill.return_value = tmp_path / "template_filled.docx"
+            with patch("lexiflow.cli.asyncio.sleep", new=AsyncMock()):
+                cli_app.onecmd(
+                    f"process -j 739 -n {notice} -p {pbs} "
+                    f"-a {audio} -t {template} -P revai --wait"
+                )
+
+    cli_app.app.fetch_transcript.assert_not_called()
+    cli_app.poutput.assert_any_call("Transcription failed.")
 
 
 def test_prompt_pick_file_lists_and_returns_selection(cli_app, tmp_path):

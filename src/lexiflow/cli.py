@@ -335,6 +335,7 @@ transcribe_subparsers = transcribe_parser.add_subparsers(
 )
 
 TRANSCRIPTION_PROVIDERS = ["speechmatics", "revai", "notebooklm"]
+TRANSCRIPTION_READY_STATUSES = {"transcribed", "completed", "done"}
 
 transcribe_submit_parser = transcribe_subparsers.add_parser(
     "submit", help="submit a job's media file for transcription"
@@ -1845,6 +1846,7 @@ class TranscriptorCMD(cmd2.Cmd):
             args.audio,
             args.template,
         )
+        job_id = args.job_id
 
         if (
             (notice is None and pbs is None)
@@ -1855,6 +1857,7 @@ class TranscriptorCMD(cmd2.Cmd):
             if context is None:
                 return
             job, job_dir = context
+            job_id = job["id"]
 
             if audio is None:
                 audio = Path(job["job_path"])
@@ -1888,7 +1891,30 @@ class TranscriptorCMD(cmd2.Cmd):
             return
 
         output_dir = (pbs or notice).parent
+        self._process_worker(
+            audio,
+            notice,
+            pbs,
+            template,
+            output_dir,
+            args.provider,
+            args.wait,
+            job_id,
+        )
 
+    process_parser.set_defaults(func=process)
+
+    def _process_worker(
+        self,
+        audio: Path,
+        notice: Path,
+        pbs: Optional[Path],
+        template: Path,
+        output_dir: Path,
+        provider: str,
+        wait: bool,
+        job_id: Optional[int],
+    ) -> None:
         try:
             extractor = MetadataExtractor()
             metadata = extractor.extract_all(notice, pbs)
@@ -1917,13 +1943,17 @@ class TranscriptorCMD(cmd2.Cmd):
         try:
             asyncio.run(
                 self._process_transcribe(
-                    audio, args.provider, vocabulary, output_txt, args.wait
+                    audio,
+                    provider,
+                    vocabulary,
+                    output_txt,
+                    wait,
+                    job_id=job_id,
+                    metadata=metadata,
                 )
             )
         except Exception as e:
             self.poutput(f"Error during transcription: {e}")
-
-    process_parser.set_defaults(func=process)
 
     async def _process_transcribe(
         self,
@@ -1932,7 +1962,21 @@ class TranscriptorCMD(cmd2.Cmd):
         vocabulary: list,
         output_path: Path,
         wait: bool,
+        job_id: Optional[int] = None,
+        metadata: Optional[dict] = None,
     ) -> None:
+        if job_id is not None:
+            external_id = await self.app.submit_transcription(
+                job_id,
+                provider,
+                additional_vocabulary=vocabulary,
+                file_path=audio_path,
+            )
+            self.poutput(f"Submitted {audio_path} to {provider}: {external_id}")
+            if wait:
+                await self._wait_for_job_transcription(job_id, metadata)
+            return
+
         service = get_service(provider)
         try:
             external_id = await service.submit_job(
@@ -1950,7 +1994,7 @@ class TranscriptorCMD(cmd2.Cmd):
                     self.poutput("Failed to retrieve job status.")
                     return
                 status = str(status_info.get("status", "")).lower()
-                if status in ("transcribed", "completed", "done"):
+                if status in TRANSCRIPTION_READY_STATUSES:
                     transcript = await service.get_transcript(external_id)
                     output_path.write_text(transcript, encoding="utf-8")
                     self.poutput(f"Transcript saved to {output_path}")
@@ -1962,6 +2006,27 @@ class TranscriptorCMD(cmd2.Cmd):
                     self.poutput(f"Job status: {status}. Waiting...")
         finally:
             await service.close()
+
+    async def _wait_for_job_transcription(
+        self, job_id: int, metadata: Optional[dict] = None
+    ) -> None:
+        while True:
+            await asyncio.sleep(5)
+            status = await self.app.poll_transcription_status(job_id)
+            if status is None:
+                self.poutput("Failed to retrieve job status.")
+                return
+            lowered = str(status).lower()
+            if lowered in TRANSCRIPTION_READY_STATUSES:
+                transcript_path = await self.app.fetch_transcript(
+                    job_id, metadata=metadata
+                )
+                self.poutput(f"Transcript saved to {transcript_path}")
+                return
+            if lowered in ("failed", "error"):
+                self.poutput("Transcription failed.")
+                return
+            self.poutput(f"Job status: {status}. Waiting...")
 
     @cmd2.with_argparser(process_parser)
     def do_process(self, args: Namespace):
