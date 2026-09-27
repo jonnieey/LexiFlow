@@ -892,6 +892,126 @@ def test_do_transcribe_fetch_missing_metadata_file(cli_app, mock_transcriptor):
     mock_transcriptor.return_value.fetch_transcript.assert_not_called()
 
 
+def test_do_transcribe_check_fetches_when_ready(
+    cli_app, mock_transcriptor, tmp_path
+):
+    transcript_path = tmp_path / "TX001_transcript.txt"
+    mock_transcriptor.return_value.poll_transcription_status.return_value = (
+        "transcribed"
+    )
+    mock_transcriptor.return_value.fetch_transcript.return_value = (
+        transcript_path
+    )
+    cli_app.poutput = MagicMock()
+
+    cli_app.onecmd("transcribe check -j 5")
+
+    mock_transcriptor.return_value.poll_transcription_status.assert_called_once_with(
+        5
+    )
+    mock_transcriptor.return_value.fetch_transcript.assert_called_once_with(
+        5, metadata=None
+    )
+    cli_app.poutput.assert_called_with(f"Transcript saved to {transcript_path}")
+
+
+def test_do_transcribe_check_not_ready(cli_app, mock_transcriptor):
+    mock_transcriptor.return_value.poll_transcription_status.return_value = (
+        "in_progress"
+    )
+    cli_app.poutput = MagicMock()
+
+    cli_app.onecmd("transcribe check -j 5")
+
+    mock_transcriptor.return_value.fetch_transcript.assert_not_called()
+    cli_app.poutput.assert_called_with(
+        "Job 5 status: in_progress (not ready)"
+    )
+
+
+def test_do_transcribe_check_no_provider(cli_app, mock_transcriptor):
+    mock_transcriptor.return_value.poll_transcription_status.return_value = None
+    cli_app.poutput = MagicMock()
+
+    cli_app.onecmd("transcribe check -j 5")
+
+    mock_transcriptor.return_value.fetch_transcript.assert_not_called()
+    cli_app.poutput.assert_called_with(
+        "Job 5 has no transcription in progress, "
+        "or the provider poll failed."
+    )
+
+
+def test_do_transcribe_check_invalid_job(cli_app, mock_transcriptor):
+    mock_transcriptor.return_value.poll_transcription_status.side_effect = (
+        ValueError("No job found with id 5")
+    )
+    cli_app.poutput = MagicMock()
+
+    cli_app.onecmd("transcribe check -j 5")
+
+    mock_transcriptor.return_value.fetch_transcript.assert_not_called()
+    cli_app.poutput.assert_called_with("Error: No job found with id 5")
+
+
+def test_do_transcribe_check_poll_error(cli_app, mock_transcriptor):
+    mock_transcriptor.return_value.poll_transcription_status.side_effect = (
+        RuntimeError("boom")
+    )
+    cli_app.poutput = MagicMock()
+
+    cli_app.onecmd("transcribe check -j 5")
+
+    cli_app.poutput.assert_called_with(
+        "Error polling transcription status: boom"
+    )
+
+
+def test_do_transcribe_check_with_metadata(
+    cli_app, mock_transcriptor, tmp_path
+):
+    metadata_file = tmp_path / "metadata.json"
+    metadata_file.write_text('{"WITNESS_NAME": "Jane Doe"}')
+    mock_transcriptor.return_value.poll_transcription_status.return_value = (
+        "transcribed"
+    )
+    mock_transcriptor.return_value.fetch_transcript.return_value = (
+        tmp_path / "out.txt"
+    )
+
+    cli_app.onecmd(f"transcribe check -j 5 -m {metadata_file}")
+
+    mock_transcriptor.return_value.fetch_transcript.assert_called_once_with(
+        5, metadata={"WITNESS_NAME": "Jane Doe"}
+    )
+
+
+def test_do_transcribe_check_missing_metadata_file(cli_app, mock_transcriptor):
+    cli_app.poutput = MagicMock()
+
+    cli_app.onecmd("transcribe check -j 5 -m /nonexistent/metadata.json")
+
+    cli_app.poutput.assert_called_with(
+        "Metadata file not found: /nonexistent/metadata.json"
+    )
+    mock_transcriptor.return_value.poll_transcription_status.assert_not_called()
+    mock_transcriptor.return_value.fetch_transcript.assert_not_called()
+
+
+def test_do_transcribe_check_fetch_error(cli_app, mock_transcriptor):
+    mock_transcriptor.return_value.poll_transcription_status.return_value = (
+        "transcribed"
+    )
+    mock_transcriptor.return_value.fetch_transcript.side_effect = RuntimeError(
+        "boom"
+    )
+    cli_app.poutput = MagicMock()
+
+    cli_app.onecmd("transcribe check -j 5")
+
+    cli_app.poutput.assert_called_with("Error fetching transcript: boom")
+
+
 def test_do_transcribe_no_subcommand(cli_app):
     cli_app.do_help = MagicMock()
     cli_app.onecmd("transcribe")

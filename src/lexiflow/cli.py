@@ -361,6 +361,18 @@ transcribe_status_parser.add_argument(
     "-j", "--job_id", type=int, required=True, help="Job ID"
 )
 
+transcribe_check_parser = transcribe_subparsers.add_parser(
+    "check", help="poll a job's transcription and fetch it if ready"
+)
+transcribe_check_parser.add_argument(
+    "-j", "--job_id", type=int, required=True, help="Job ID"
+)
+transcribe_check_parser.add_argument(
+    "-m",
+    "--metadata",
+    help="Path to a metadata JSON file to enhance the transcript request",
+)
+
 transcribe_fetch_parser = transcribe_subparsers.add_parser(
     "fetch", help="fetch the transcript for a job"
 )
@@ -1616,15 +1628,61 @@ class TranscriptorCMD(cmd2.Cmd):
 
     transcribe_status_parser.set_defaults(func=transcribe_status)
 
+    def _load_metadata_arg(
+        self, metadata_arg: Optional[str]
+    ) -> tuple[Optional[dict], bool]:
+        """Load an optional -m JSON file. Returns (metadata, ok)."""
+        if not metadata_arg:
+            return None, True
+        metadata_path = Path(metadata_arg)
+        if not metadata_path.exists():
+            self.poutput(f"Metadata file not found: {metadata_path}")
+            return None, False
+        return json.loads(metadata_path.read_text()), True
+
+    def transcribe_check(self, args: Namespace):
+        metadata, ok = self._load_metadata_arg(args.metadata)
+        if not ok:
+            return
+
+        try:
+            status = asyncio.run(
+                self.app.poll_transcription_status(args.job_id)
+            )
+        except ValueError as e:
+            self.poutput(f"Error: {e}")
+            return
+        except Exception as e:
+            self.poutput(f"Error polling transcription status: {e}")
+            return
+
+        if status is None:
+            self.poutput(
+                f"Job {args.job_id} has no transcription in progress, "
+                "or the provider poll failed."
+            )
+            return
+
+        if str(status).lower() not in TRANSCRIPTION_READY_STATUSES:
+            self.poutput(f"Job {args.job_id} status: {status} (not ready)")
+            return
+
+        try:
+            transcript_path = asyncio.run(
+                self.app.fetch_transcript(args.job_id, metadata=metadata)
+            )
+            self.poutput(f"Transcript saved to {transcript_path}")
+        except ValueError as e:
+            self.poutput(f"Error: {e}")
+        except Exception as e:
+            self.poutput(f"Error fetching transcript: {e}")
+
+    transcribe_check_parser.set_defaults(func=transcribe_check)
+
     def transcribe_fetch(self, args: Namespace):
-        metadata = None
-        if args.metadata:
-            metadata_path = Path(args.metadata)
-            if metadata_path.exists():
-                metadata = json.loads(metadata_path.read_text())
-            else:
-                self.poutput(f"Metadata file not found: {metadata_path}")
-                return
+        metadata, ok = self._load_metadata_arg(args.metadata)
+        if not ok:
+            return
 
         try:
             transcript_path = asyncio.run(
@@ -1640,10 +1698,13 @@ class TranscriptorCMD(cmd2.Cmd):
 
     @cmd2.with_argparser(transcribe_parser)
     def do_transcribe(self, args: Namespace):
-        """
+        """Submit, poll, and fetch external transcription for a job.
 
-        Transcribe command help
-
+        Subcommands:
+          submit - submit a job's media file for transcription
+          status - poll the provider for a job's transcription status
+          check  - poll and, if ready, fetch the transcript
+          fetch  - fetch the transcript and save it to the job directory
         """
 
         if hasattr(args, "func"):
