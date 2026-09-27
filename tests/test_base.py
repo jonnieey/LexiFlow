@@ -1069,6 +1069,44 @@ def test_submit_transcription_runs_db_calls_in_thread(
     assert "update_jobs" in names
 
 
+def test_submit_transcription_honors_file_path_override(
+    transcriptor, test_base_dir
+):
+    job_id, job_file = _make_transcription_job(transcriptor, test_base_dir)
+    override_file = test_base_dir / "override.mp3"
+    override_file.write_text("other audio")
+    mock_service = AsyncMock()
+    mock_service.submit_job.return_value = "ext-9"
+
+    with patch("lexiflow.base.get_service", return_value=mock_service):
+        external_id = asyncio.run(
+            transcriptor.submit_transcription(
+                job_id, "revai", file_path=override_file
+            )
+        )
+
+    assert external_id == "ext-9"
+    mock_service.submit_job.assert_awaited_once_with(
+        override_file, additional_vocabulary=None
+    )
+    job = transcriptor.api.get_jobs(conditions={"id": [("=", job_id)]})[0]
+    assert job["external_job_id"] == "ext-9"
+
+
+def test_submit_transcription_override_missing_file_raises(
+    transcriptor, test_base_dir
+):
+    job_id, job_file = _make_transcription_job(transcriptor, test_base_dir)
+    missing = test_base_dir / "nope.mp3"
+
+    with pytest.raises(FileNotFoundError):
+        asyncio.run(
+            transcriptor.submit_transcription(
+                job_id, "revai", file_path=missing
+            )
+        )
+
+
 def test_submit_transcription_missing_job_raises(transcriptor):
     with pytest.raises(ValueError, match="No job found"):
         asyncio.run(transcriptor.submit_transcription(999999, "revai"))

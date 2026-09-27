@@ -1010,24 +1010,32 @@ class Transcriptor:
         job_id: int,
         provider: str,
         additional_vocabulary: Optional[List[str]] = None,
+        file_path: Optional[Path] = None,
     ) -> str:
         """
         Submit an existing job's media file to an external transcription
         provider, recording provider/external_job_id/transcription_status
         on the job row.
 
+        ``file_path`` overrides the job's own ``job_path`` as the uploaded
+        file (still recorded against ``job_id``).
+
         Returns the provider's external job id.
         """
         job = await asyncio.to_thread(self._get_transcription_job, job_id)
-        file_path = Path(job["job_path"])
-        if not file_path.exists():
-            raise FileNotFoundError(f"Job file not found: {file_path}")
+        upload_path = (
+            Path(file_path)
+            if file_path is not None
+            else Path(job["job_path"])
+        )
+        if not upload_path.exists():
+            raise FileNotFoundError(f"Job file not found: {upload_path}")
 
         service = get_service(provider)
         try:
             try:
                 external_job_id = await service.submit_job(
-                    file_path, additional_vocabulary=additional_vocabulary
+                    upload_path, additional_vocabulary=additional_vocabulary
                 )
             except Exception as e:
                 await asyncio.to_thread(
