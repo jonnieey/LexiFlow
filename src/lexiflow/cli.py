@@ -1891,16 +1891,22 @@ class TranscriptorCMD(cmd2.Cmd):
             return
 
         output_dir = (pbs or notice).parent
-        self._process_worker(
-            audio,
-            notice,
-            pbs,
-            template,
-            output_dir,
-            args.provider,
-            args.wait,
-            job_id,
+        thread = threading.Thread(
+            target=self._process_worker,
+            args=(
+                audio,
+                notice,
+                pbs,
+                template,
+                output_dir,
+                args.provider,
+                args.wait,
+                job_id,
+            ),
+            daemon=True,
         )
+        thread.start()
+        self.poutput(f"Processing {audio.name} in the background...")
 
     process_parser.set_defaults(func=process)
 
