@@ -215,13 +215,38 @@ def render_pdf(
 # Register available backends on module import
 _register_backends()
 
-# Set default backend from environment variable, else first available backend
-_default_from_env = os.environ.get("LEXIFLOW_PDF_BACKEND")
-if _default_from_env and _default_from_env in PDFRenderer._backends:
-    PDFRenderer.set_default_backend(_default_from_env)
-elif PDFRenderer._backends:
-    # Choose priority: playwright > weasyprint > xhtml2pdf
-    for name in ["playwright", "weasyprint", "xhtml2pdf"]:
+_UNSET = object()
+BACKEND_PRIORITY = ["playwright", "weasyprint", "xhtml2pdf"]
+
+
+def apply_default_backend(env_value=_UNSET, config_value=_UNSET) -> None:
+    """Set the default backend.
+
+    Precedence: LEXIFLOW_PDF_BACKEND env var, then ``pdf_backend`` in the
+    config file ("auto" = none), then the first available by priority.
+    """
+    if env_value is _UNSET:
+        env_value = os.environ.get("LEXIFLOW_PDF_BACKEND")
+    if config_value is _UNSET:
+        from lexiflow.config import config_manager
+
+        config_value = config_manager.get("pdf_backend")
+
+    for source, name in (("env", env_value), ("config", config_value)):
+        if not name or name == "auto":
+            continue
+        if name in PDFRenderer._backends:
+            PDFRenderer.set_default_backend(name)
+            return
+        logger.warning(
+            "PDF backend '%s' from %s is not available; falling back", name, source
+        )
+
+    PDFRenderer._default_backend = None
+    for name in BACKEND_PRIORITY:
         if name in PDFRenderer._backends:
             PDFRenderer.set_default_backend(name)
             break
+
+
+apply_default_backend()
