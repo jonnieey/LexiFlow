@@ -1749,6 +1749,10 @@ class TranscriptorCMD(cmd2.Cmd):
         except ValueError as e:
             self.poutput(str(e))
             return
+        # Same file as the Transcriptor config: reload so a later
+        # save_config() doesn't overwrite this value with stale data.
+        if Path(config_manager.config_file) == Path(self.app.CONFIG_FILE):
+            self.app.config = self.app._load_config()
         self.poutput(f"Set {args.key} = {_mask_secret(args.key, args.value)}")
 
     config_set_parser.set_defaults(func=config_set)

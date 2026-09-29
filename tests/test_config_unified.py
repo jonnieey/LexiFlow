@@ -295,3 +295,26 @@ def test_migrate_leaves_legacy_files_in_place(tmp_path):
     cfg.migrate_legacy_configs(tmp_path / "lexiflow" / "config.yaml", t, l)
 
     assert t.exists() and l.exists()
+
+
+def test_cli_config_set_refreshes_in_memory_config(tmp_path, monkeypatch):
+    """A later save_config must not clobber a value set via 'config set'."""
+    from lexiflow import cli
+    from lexiflow.base import Transcriptor
+
+    path = tmp_path / "config.yaml"
+    Config(**cfg.DEFAULT_CONFIG).write(path)
+    mgr = cfg.ConfigManager(config_file=path)
+    monkeypatch.setattr(cli, "config_manager", mgr)
+
+    app = Transcriptor.__new__(Transcriptor)
+    app.CONFIG_FILE = path
+    app.config = Config.from_yaml(path)
+    fake = type("F", (), {"poutput": lambda self, m: None, "app": app})()
+
+    cli.TranscriptorCMD.config_set(
+        fake, type("A", (), {"key": "AI_MODEL", "value": "gpt-x"})()
+    )
+    app.save_config()
+
+    assert Config.from_yaml(path).ai_model == "gpt-x"
