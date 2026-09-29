@@ -133,27 +133,6 @@ Button.-error {
     color: $accent;
     margin: 1;
 }
-.form-row {
-    height: auto;
-    margin: 1 0;
-    align: left top;
-}
-.form-row > Label {
-    width: 16;
-    text-align: left;
-    color: $accent;
-}
-.form-row > Input,
-.form-row > Select {
-    width: 1fr;
-}
-.two-col > Label {
-    width: 12;
-}
-.two-col > Input,
-.two-col > Select {
-    width: 1fr;
-}
 
 /* Table zebra striping */
 #pending-jobs-table .datatable--even-row { background: $panel; }
@@ -401,28 +380,29 @@ ModalScreen {
 #invoice-input-pane {
     width: 3fr;
     height: 1fr;
-    padding: 1;
+    padding: 0 1;
 }
 #invoice-controls {
     height: auto;
-    background: $panel;
-    padding: 1;
     margin-bottom: 1;
 }
 #invoice-form-container {
-    background: $surface;
-    padding: 1;
-    margin: 1 0;
+    height: auto;
+    margin-bottom: 1;
+}
+#invoice-form-container > .field-row > Label {
+    width: 9;
+}
+#invoice-form-container > .form-grid > .field-row > Label {
+    width: 7;
 }
 #invoice-results {
-    height: auto;
-    border: solid $panel;
+    height: 1fr;
+    border: round $panel;
     background: $surface;
-    padding: 1;
 }
 #invoice-jobs-table {
     height: 1fr;
-    margin: 1 0;
     min-height: 4;
 }
 #invoice-cutoffs-container {

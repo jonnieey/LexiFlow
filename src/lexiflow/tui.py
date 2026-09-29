@@ -3022,28 +3022,32 @@ class Invoice(Container):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="invoice-main-layout"):
-            yield Label("Invoicing", classes="title")
-            # Left pane: Invoice input sections
-            with VerticalScroll(id="invoice-input-pane"):
+            # Left pane: controls on top, results fill the rest
+            with Vertical(id="invoice-input-pane"):
                 # Controls (form + buttons)
                 with Container(id="invoice-controls"):
                     with Container(id="invoice-form-container"):
-                        with Horizontal(classes="form-row"):
-                            yield Label("Client:")
-                            yield Select(
+                        yield field_row(
+                            "Client:",
+                            Select(
                                 [],
                                 id="client-select",
                                 prompt="Select a client",
-                            )
-                        with Horizontal(classes="form-row two-col"):
-                            yield Label("Start Date:")
-                            yield Input(
-                                placeholder="YYYY-MM-DD", id="start-date"
-                            )
-                            yield Label("End Date:")
-                            yield Input(
-                                placeholder="YYYY-MM-DD", id="end-date"
-                            )
+                            ),
+                        )
+                        yield Container(
+                            field_row(
+                                "Start:",
+                                Input(
+                                    placeholder="YYYY-MM-DD", id="start-date"
+                                ),
+                            ),
+                            field_row(
+                                "End:",
+                                Input(placeholder="YYYY-MM-DD", id="end-date"),
+                            ),
+                            classes="form-grid",
+                        )
 
                     with Horizontal(classes="button-bar"):
                         yield Button(
