@@ -439,10 +439,10 @@ class BaseTable(Container):
         self._open_context_menu(row_key)
 
 
-def field_row(label: str, widget: Widget) -> Horizontal:
-    """Label and its input on a single terminal row (see .field-row in
+def field_row(label: str, *widgets: Widget) -> Horizontal:
+    """Label and its input(s) on a single terminal row (see .field-row in
     tui.css), so modal forms fit small terminals without scrolling."""
-    return Horizontal(Label(label), widget, classes="field-row")
+    return Horizontal(Label(label), *widgets, classes="field-row")
 
 
 class VimModalMixin:
@@ -2714,10 +2714,13 @@ class ClientEditScreen(BaseEditScreen):
         return "client-form-container"
 
     def get_fields(self):
-        yield Label("Name:")
-        yield Input(value=self.data.get("name", ""), id="client-name")
-        yield Label("Email:")
-        yield Input(value=self.data.get("email", ""), id="client-email")
+        yield field_row(
+            "Name:", Input(value=self.data.get("name", ""), id="client-name")
+        )
+        yield field_row(
+            "Email:",
+            Input(value=self.data.get("email", ""), id="client-email"),
+        )
 
     def collect_values(self) -> Dict | None:
         return {
@@ -2746,10 +2749,8 @@ class AddClientScreen(BaseAddScreen):
         return "add-client-form-container"
 
     def get_fields(self):
-        yield Label("Name:")
-        yield Input(id="add-client-name")
-        yield Label("Email:")
-        yield Input(id="add-client-email")
+        yield field_row("Name:", Input(id="add-client-name"))
+        yield field_row("Email:", Input(id="add-client-email"))
 
     def validate(self) -> bool:
         name = self.query_one("#add-client-name", Input).value
@@ -2907,16 +2908,22 @@ class RateEditScreen(BaseEditScreen):
         return "rate-form-container"
 
     def get_fields(self):
-        yield Label("Normal:")
-        yield Input(value=str(self.data.get("normal", 0.0)), id="rate-normal")
-        yield Label("Expedite:")
-        yield Input(
-            value=str(self.data.get("expedite", 0.0)), id="rate-expedite"
+        yield field_row(
+            "Normal:",
+            Input(value=str(self.data.get("normal", 0.0)), id="rate-normal"),
         )
-        yield Label("Interpreted:")
-        yield Input(
-            value=str(self.data.get("interpreted", 0.0)),
-            id="rate-interpreted",
+        yield field_row(
+            "Expedite:",
+            Input(
+                value=str(self.data.get("expedite", 0.0)), id="rate-expedite"
+            ),
+        )
+        yield field_row(
+            "Interpreted:",
+            Input(
+                value=str(self.data.get("interpreted", 0.0)),
+                id="rate-interpreted",
+            ),
         )
 
     def collect_values(self) -> Dict | None:
@@ -3362,18 +3369,23 @@ class AddCutoffsScreen(BaseAddScreen):
         return "add-cutoffs-form-container"
 
     def get_fields(self):
-        yield Label("Docx File Path:")
-        yield Input(
-            placeholder="Enter path to cutoffs docx file",
-            id="cutoffs-file-path",
+        yield field_row(
+            "Docx File Path:",
+            Input(
+                placeholder="Enter path to cutoffs docx file",
+                id="cutoffs-file-path",
+            ),
+            Button("Browse", id="browse-cutoffs-file"),
         )
-        yield Button("Browse", id="browse-cutoffs-file")
-        yield Label("Year:")
-        yield Input(value=str(datetime.now().year), id="cutoffs-year")
-        yield Label("Date Format:")
-        yield Input(
-            value=self.app.transcriptor.config.date_format,
-            id="invoice-date-format",
+        yield field_row(
+            "Year:", Input(value=str(datetime.now().year), id="cutoffs-year")
+        )
+        yield field_row(
+            "Date Format:",
+            Input(
+                value=self.app.transcriptor.config.date_format,
+                id="invoice-date-format",
+            ),
         )
 
     def validate(self) -> bool:
@@ -3464,12 +3476,16 @@ class ProfileEditScreen(BaseEditScreen):
         return "profile-form-container"
 
     def get_fields(self):
-        yield Label("Name:")
-        yield Input(value=self.data.get("name", ""), id="profile-name")
-        yield Label("Area:")
-        yield Input(value=self.data.get("area", ""), id="profile-area")
-        yield Label("Country:")
-        yield Input(value=self.data.get("country", ""), id="profile-country")
+        yield field_row(
+            "Name:", Input(value=self.data.get("name", ""), id="profile-name")
+        )
+        yield field_row(
+            "Area:", Input(value=self.data.get("area", ""), id="profile-area")
+        )
+        yield field_row(
+            "Country:",
+            Input(value=self.data.get("country", ""), id="profile-country"),
+        )
 
     def collect_values(self) -> Dict | None:
         return {

@@ -491,6 +491,12 @@ Button.-error {
     border: none;
     background: $accent 30%;
 }
+.field-row > Button {
+    height: 1;
+    border: none;
+    min-width: 10;
+    margin: 0 0 0 1;
+}
 .field-row > Select,
 .field-row > Select:focus {
     border: none;
