@@ -8,6 +8,7 @@ def test_config_new_fields_have_defaults():
 
     assert cfg.pdf_backend == "auto"
     assert cfg.ai_model is None
+    assert cfg.ai_api_key_env is None
     assert cfg.base_url is None
     assert cfg.notebooklm_storage_path is None
     assert cfg.notebooklm_notebook_id is None

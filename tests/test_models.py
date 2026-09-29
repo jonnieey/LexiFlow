@@ -280,6 +280,7 @@ def test_yaml_base_config():
                     "invoice_currency": "USD",
                     "pdf_backend": "auto",
                     "ai_model": None,
+                    "ai_api_key_env": None,
                     "base_url": None,
                     "notebooklm_storage_path": None,
                     "notebooklm_notebook_id": None,

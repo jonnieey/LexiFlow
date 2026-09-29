@@ -276,6 +276,8 @@ class Config(YAMLBase):
     # LegatoFlow settings (secrets such as API keys come from env vars only).
     # None = unset in file; Settings falls back to env var, then its default.
     ai_model: Optional[str] = None
+    # Name of the env var holding the AI API key (None = OPENAI_API_KEY)
+    ai_api_key_env: Optional[str] = None
     base_url: Optional[str] = None
     notebooklm_storage_path: Optional[str] = None
     notebooklm_notebook_id: Optional[str] = None
