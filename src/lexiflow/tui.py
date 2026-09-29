@@ -3931,15 +3931,13 @@ class ConfirmDelete(VimModalMixin, ModalScreen[bool]):
         self.item_type = item_type
 
     def compose(self):
-        with Container(id="confirm-delete"):
+        with Container(id="confirm-delete-box"):
+            yield Label(
+                "Are you sure you want to delete this item?",
+                classes="confirm-title",
+            )
             with Horizontal(id="confirm-delete-buttons"):
-                yield Label(
-                    "Are you sure you want to delete this item?",
-                    classes="confirm-title",
-                )
-                yield Button(
-                    "Yes", variant="primary", id="confirm-delete-yes"
-                )
+                yield Button("Yes", variant="error", id="confirm-delete-yes")
                 yield Button("No", variant="default", id="confirm-delete-no")
 
     def on_mount(self):

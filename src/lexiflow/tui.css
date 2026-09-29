@@ -335,11 +335,25 @@ ModalScreen {
     margin: 0 2;
     min-width: 20%;
 }
-#confirm-delete {
-    background: $error;
+#confirm-delete-box {
+    width: 50;
+    max-width: 90%;
+    height: auto;
+    border: double $error;
+    background: $surface;
+    padding: 1 2;
 }
-#confirm-delete:hover {
-    background: $error-darken-1;
+#confirm-delete-box > .confirm-title {
+    width: 100%;
+    text-align: center;
+    margin-bottom: 1;
+}
+#confirm-delete-buttons {
+    height: auto;
+    align: center middle;
+}
+#confirm-delete-buttons > Button {
+    margin: 0 1;
 }
 #restore-screen, #purge-screen, #about-screen, #add-cutoffs, #add-client {
     width: 60%;
