@@ -4,6 +4,7 @@ Core PDF rendering interface and backend registry.
 
 import asyncio
 import importlib
+import importlib.util
 import logging
 import os
 from abc import ABC, abstractmethod
@@ -136,8 +137,20 @@ class PDFRenderer:
             raise
 
 
+def _library_installed(name: str) -> bool:
+    """True if the backend's third-party library is importable.
+
+    Backend modules import their library lazily, so importing the module
+    alone does not prove the backend works.
+    """
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
 def _register_backends() -> None:
-    """Attempt to import and register all known backends."""
+    """Register every known backend whose library is installed."""
     backends = [
         (
             "playwright",
@@ -156,6 +169,9 @@ def _register_backends() -> None:
         ),
     ]
     for name, module_name, class_name in backends:
+        if not _library_installed(name):
+            logger.debug("Backend '%s' not available: library not installed", name)
+            continue
         try:
             module = importlib.import_module(module_name)
             backend_class = getattr(module, class_name)
@@ -183,6 +199,8 @@ def auto_detect_engine() -> str:
     """
     candidates = ["playwright", "weasyprint", "xhtml2pdf"]
     for name in candidates:
+        if not _library_installed(name):
+            continue
         try:
             importlib.import_module(
                 f"lexiflow.pdf.backends.{name}_backend"
@@ -222,6 +240,13 @@ _register_backends()
 
 _UNSET = object()
 BACKEND_PRIORITY = ["playwright", "weasyprint", "xhtml2pdf"]
+
+
+def not_installed_message(name: str) -> str:
+    return (
+        f"PDF backend '{name}' is not installed; saved, and it will be used "
+        f"once installed (e.g. uv pip install 'lexiflow[{name}]')."
+    )
 
 
 def apply_default_backend(env_value=_UNSET, config_value=_UNSET) -> None:

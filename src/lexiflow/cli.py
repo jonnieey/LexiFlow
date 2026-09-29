@@ -17,7 +17,7 @@ from lexiflow.base import Transcriptor
 from lexiflow.config import SECRET_KEYS, config_manager
 from lexiflow.extractor import MetadataExtractor, fill_template
 from lexiflow.input_handler import CLIInputHandler
-from lexiflow.pdf import PDFRenderer
+from lexiflow.pdf import BACKEND_PRIORITY, PDFRenderer, not_installed_message
 from lexiflow.services import get_service
 from lexiflow.utils import (
     invoice_template_themes,
@@ -174,7 +174,7 @@ update_config_parser.add_argument(
 update_config_parser.add_argument(
     "-p",
     "--pdf-backend",
-    choices=["auto", *PDFRenderer.available_backends()],
+    choices=["auto", *BACKEND_PRIORITY],
     help="PDF rendering backend (saved to config)",
 )
 
@@ -846,7 +846,10 @@ class TranscriptorCMD(cmd2.Cmd):
 
         if args.pdf_backend:
             config.pdf_backend = args.pdf_backend
-            self.pdf_backend = args.pdf_backend
+            if args.pdf_backend in ("auto", *PDFRenderer.available_backends()):
+                self.pdf_backend = args.pdf_backend
+            else:
+                self.poutput(not_installed_message(args.pdf_backend))
 
         self.app.config = config
 

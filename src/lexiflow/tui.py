@@ -32,7 +32,7 @@ from textual.widgets import (
 
 from lexiflow.base import Transcriptor
 from lexiflow.extractor import MetadataExtractor, fill_template
-from lexiflow.pdf import PDFRenderer
+from lexiflow.pdf import BACKEND_PRIORITY, PDFRenderer, not_installed_message
 from lexiflow.utils import (
     TEMPLATE_MAPPING,
     extract_date_due,
@@ -3535,11 +3535,20 @@ class ConfigurationScreen(VimModalMixin, ModalScreen):
                 )
 
                 yield Label("PDF Backend:")
-                backends = ["auto", *PDFRenderer.available_backends()]
+                installed = PDFRenderer.available_backends()
+                backends = ["auto", *BACKEND_PRIORITY]
                 if config.pdf_backend not in backends:
                     backends.append(config.pdf_backend)
                 yield Select(
-                    [(name, name) for name in backends],
+                    [
+                        (
+                            name
+                            if name == "auto" or name in installed
+                            else f"{name} (not installed)",
+                            name,
+                        )
+                        for name in backends
+                    ],
                     id="pdf_backend",
                     value=config.pdf_backend,
                     allow_blank=False,
@@ -3586,6 +3595,10 @@ class ConfigurationScreen(VimModalMixin, ModalScreen):
             PDFRenderer._default_backend = None
         elif pdf_backend in PDFRenderer.available_backends():
             PDFRenderer.set_default_backend(pdf_backend)
+        else:
+            self.app.notify(
+                not_installed_message(pdf_backend), severity="warning"
+            )
 
         # Save to file
         self.app.transcriptor.save_config()

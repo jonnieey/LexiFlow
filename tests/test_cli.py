@@ -204,14 +204,32 @@ def test_do_update_config_pdf_backend_persists_and_applies(
 ):
     from lexiflow.pdf import PDFRenderer
 
-    backend = PDFRenderer.available_backends()[0]
-    with patch.object(PDFRenderer, "_default_backend", None):
+    backend = "xhtml2pdf"
+    with patch.object(PDFRenderer, "_default_backend", None), patch.object(
+        PDFRenderer, "_backends", {backend: MagicMock()}
+    ):
         result = cli_app.onecmd(f"update config --pdf-backend {backend}")
         assert PDFRenderer.get_default_backend() == backend
     assert result is False
     assert mock_transcriptor.return_value.config.pdf_backend == backend
     mock_transcriptor.return_value.save_config.assert_called_once()
     assert f"[{backend}]" in cli_app.prompt
+
+
+def test_do_update_config_pdf_backend_not_installed_saves_and_warns(
+    cli_app, mock_transcriptor
+):
+    from lexiflow.pdf import PDFRenderer
+
+    with patch.object(PDFRenderer, "_default_backend", "xhtml2pdf"), patch.object(
+        PDFRenderer, "_backends", {"xhtml2pdf": MagicMock()}
+    ), patch.object(cli_app, "poutput") as out:
+        cli_app.onecmd("update config --pdf-backend weasyprint")
+        assert PDFRenderer.get_default_backend() == "xhtml2pdf"
+    assert mock_transcriptor.return_value.config.pdf_backend == "weasyprint"
+    mock_transcriptor.return_value.save_config.assert_called_once()
+    text = " ".join(str(c.args[0]) for c in out.call_args_list)
+    assert "not installed" in text and "lexiflow[weasyprint]" in text
 
 
 def test_do_update_config_pdf_backend_auto(cli_app, mock_transcriptor):

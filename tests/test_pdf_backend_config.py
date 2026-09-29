@@ -54,3 +54,51 @@ def test_reads_config_file_value(backends, monkeypatch):
     )
     core.apply_default_backend()
     assert PDFRenderer.get_default_backend() == "xhtml2pdf"
+
+
+# --- registration only for installed libraries ---------------------------
+
+
+def _fake_find_spec(installed):
+    import importlib.util
+
+    real = importlib.util.find_spec
+
+    def find_spec(name, *a, **k):
+        if name in ("playwright", "weasyprint", "xhtml2pdf"):
+            return object() if name in installed else None
+        return real(name, *a, **k)
+
+    return find_spec
+
+
+def test_register_skips_backends_whose_library_is_missing(monkeypatch):
+    import importlib.util
+
+    monkeypatch.setattr(PDFRenderer, "_backends", {})
+    monkeypatch.setattr(
+        importlib.util, "find_spec", _fake_find_spec({"xhtml2pdf"})
+    )
+
+    core._register_backends()
+
+    assert PDFRenderer.available_backends() == ["xhtml2pdf"]
+
+
+def test_auto_detect_skips_missing_libraries(monkeypatch):
+    import importlib.util
+
+    monkeypatch.setattr(
+        importlib.util, "find_spec", _fake_find_spec({"weasyprint"})
+    )
+
+    assert core.auto_detect_engine() == "weasyprint"
+
+
+def test_auto_detect_raises_when_nothing_installed(monkeypatch):
+    import importlib.util
+
+    monkeypatch.setattr(importlib.util, "find_spec", _fake_find_spec(set()))
+
+    with pytest.raises(RuntimeError, match="No PDF backend available"):
+        core.auto_detect_engine()

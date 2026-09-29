@@ -2,6 +2,18 @@
 PDF rendering engine for transcriptor.
 """
 
-from .core import PDFRenderer, auto_detect_engine, render_pdf
+from .core import (
+    BACKEND_PRIORITY,
+    PDFRenderer,
+    auto_detect_engine,
+    not_installed_message,
+    render_pdf,
+)
 
-__all__ = ["PDFRenderer", "render_pdf", "auto_detect_engine"]
+__all__ = [
+    "BACKEND_PRIORITY",
+    "PDFRenderer",
+    "render_pdf",
+    "auto_detect_engine",
+    "not_installed_message",
+]
