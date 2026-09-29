@@ -117,6 +117,18 @@ User asked to merge the two config files (Transcriptor YAML `~/.config/transcrip
 - [x] backends registered only when their library is installed; CLI/TUI list all known backends, uninstalled ones saved with a warning + install hint — `1866d3a`
 Full suite 584→635 passed, 1 skipped. Real machine config migrated on first test run: verified merged keys present, no API keys in the new file.
 
+## Phase 5b: AI key env indirection, .env precedence, config set UX — DONE
+Env-only secrets made the shell `OPENAI_API_KEY` (a real OpenAI key) be sent to the configured DeepSeek `base_url`. Fix: the config names which env var holds the AI key. TDD throughout:
+- [x] `Config.ai_api_key_env` field — `6311464`
+- [x] `Settings.AI_API_KEY_ENV` (config > env > `OPENAI_API_KEY`), `Settings.OPENAI_API_KEY` read from that var, no fallback; any `*_API_KEY` name treated as secret; `config show` shows the var in use — `8502745`
+- [x] `MetadataExtractor` raises `<NAME> is not set` instead of building a keyless client — `3c54c95`
+- [x] `load_dotenv(override=False)`: shell env beats `.env` — `7b236d0`
+- [x] removed `config migrate` + `ConfigManager.migrate_from_env` (automatic legacy-file migration kept) — `60962db`
+- [x] `config set` validates key against `Config` fields + value via pydantic (coerces types, rejects bad values without writing); `pdf_backend` applied live — `fbd2f14`
+- [x] `config set` tab completion: keys with current value; per-key value suggestions (backends/themes/currencies/`*_API_KEY` names/paths/current value); cmd2 end-to-end completion tests — `480199b`
+- [x] README — `2a287c3`
+Full suite 635→660 passed, 1 skipped.
+
 ## Log
 - 2026-09-17: phase1 started, schema mapping in progress
 - 2026-09-17: improvement-scout run on both repos, IMPROVEMENTS.md created
@@ -162,3 +174,4 @@ Full suite 584→635 passed, 1 skipped. Real machine config migrated on first te
 - 2026-09-27: user reported `process -j 741` submitted but then `transcribe fetch/status -j 741` both failed with "no provider/external_job_id set". Root cause: `_process_transcribe` used the jobless raw path (`get_service().submit_job`) and never wrote provider/external_job_id/transcription_status to the job row (a leftover from LegatoFlow, which had no job concept), so the job-aware poll/fetch could never see it; `--wait` also wrote `<audio>.txt` and left the row untouched. Also confirmed `process` was fully synchronous (only `transcribe submit` was threaded). Re-entered plan mode, 4 clarifying decisions (honor `-a` via a file_path override; job-based `--wait` reuses poll/fetch; keep jobless `process`; add `transcribe check`). 4 commits, TDD throughout: `Transcriptor.submit_transcription` gained an optional `file_path` override (`8a65988`); job-based `process` now routes through `submit_transcription` and `--wait` through `poll_transcription_status`/`fetch_transcript` (canonical `{job_number}_transcript.txt`, row status updated), jobless path unchanged (`0da29b8`); `process` dispatches `_process_worker` on a daemon thread so it returns immediately (`8c8ae2a`); new `transcribe check -j` polls once and fetches when ready, CLI parity with the TUI Check & Fetch action, plus transcribed help text (`ccdcb2d`). Full suite 570→584 passed, 1 skipped; prod DB untouched by tests.
 - 2026-09-29: Phase 5 — unified config into `~/.config/lexiflow/config.yaml`, API keys env-only, `pdf_backend` selectable via config/CLI/TUI. 9 commits (`a00c506`..`fa6b2c6`), TDD throughout. Full suite 584→625 passed, 1 skipped.
 - 2026-09-29: invoice PDF backend follow-up — async path honours selected backend (`80c066f`); uninstalled backends no longer registered as available (`1866d3a`). Found neither the project venv nor the `uv tool` install has any PDF backend installed. Full suite 635 passed, 1 skipped.
+- 2026-09-29: Phase 5b — `ai_api_key_env`, `.env` no longer overrides shell, `config migrate` removed, `config set` validation + tab completion, version 2.1.0 (`4decdd6`). Full suite 660 passed, 1 skipped.
