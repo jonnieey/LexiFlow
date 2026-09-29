@@ -267,3 +267,34 @@ def test_document_processing_fits_small_terminal(isolated_app, tmp_path):
                 assert screen.region.contains_region(button.region), button.id
 
     asyncio.run(_run())
+
+
+def test_job_edit_client_is_a_dropdown_of_clients(isolated_app):
+    async def _run():
+        async with isolated_app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            api = isolated_app.transcriptor.api
+            api.add_client({"name": "Acme", "email": "a@x.com"})
+            beta = api.add_client({"name": "Beta", "email": "b@x.com"})
+            screen = JobEditScreen(dict(JOB, client_id=beta))
+            isolated_app.push_screen(screen)
+            await pilot.pause()
+            select = screen.query_one("#client_id", Select)
+            labels = [str(label) for label, _ in select._options]
+            assert any("Acme" in label for label in labels)
+            assert select.value == beta
+            assert screen.collect_values()["client_id"] == beta
+
+    asyncio.run(_run())
+
+
+def test_job_edit_keeps_unknown_client_id(isolated_app):
+    async def _run():
+        async with isolated_app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            screen = JobEditScreen(dict(JOB, client_id=99))
+            isolated_app.push_screen(screen)
+            await pilot.pause()
+            assert screen.collect_values()["client_id"] == 99
+
+    asyncio.run(_run())

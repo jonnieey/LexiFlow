@@ -1729,7 +1729,6 @@ class JobEditScreen(BaseEditScreen):
         # Same initial values as before; str() only where it always was
         values = {
             "job_number": d.get("job_number", ""),
-            "client_id": str(d.get("client_id", "")),
             "date_received": d.get("date_received", ""),
             "date_due": d.get("date_due", ""),
             "quantity": str(d.get("quantity", "")),
@@ -1744,12 +1743,32 @@ class JobEditScreen(BaseEditScreen):
         def text(label: str, key: str) -> Horizontal:
             return field_row(label, Input(value=values[key], id=key))
 
+        client_options = [
+            (f"{c['name']} (ID: {c['id']})", c["id"])
+            for c in self.app.transcriptor.api.get_clients()
+        ]
+        try:
+            client_id = int(d.get("client_id") or 0) or None
+        except (TypeError, ValueError):
+            client_id = None
+        # A job whose client row is gone still keeps its id
+        if client_id and client_id not in {v for _, v in client_options}:
+            client_options.append((f"ID {client_id} (unknown)", client_id))
+
         statuses = ["Pending", "Done"]
         job_types = ["normal", "expedite", "interpreted"]
         # Two columns, related fields side by side
         yield Container(
             text("Job Number:", "job_number"),
-            text("Client ID:", "client_id"),
+            field_row(
+                "Client:",
+                Select(
+                    client_options,
+                    value=client_id if client_id else Select.BLANK,
+                    prompt="Select a client",
+                    id="client_id",
+                ),
+            ),
             field_row(
                 "Status:",
                 Select(
@@ -1798,7 +1817,6 @@ class JobEditScreen(BaseEditScreen):
 
         # Numeric fields
         numeric_fields = [
-            "client_id",
             "total_quantity",
             "quantity",
             "job_rate",
@@ -1809,17 +1827,17 @@ class JobEditScreen(BaseEditScreen):
             widget = self.query_one(f"#{field}", Input)
             try:
                 if widget.value.strip():
-                    if field == "client_id":
-                        updated[field] = int(widget.value)
-                    else:
-                        updated[field] = float(widget.value)
+                    updated[field] = float(widget.value)
                 else:
-                    updated[field] = 0.0 if field != "client_id" else 0
+                    updated[field] = 0.0
             except ValueError:
                 self.app.notify(
                     f"Invalid value for {field}!", severity="error"
                 )
                 return None
+
+        client = self.query_one("#client_id", Select).value
+        updated["client_id"] = 0 if client is Select.BLANK else client
 
         # Select fields
         select_fields = ["job_type", "status"]
