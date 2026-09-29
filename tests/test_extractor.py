@@ -47,10 +47,22 @@ def test_get_ordinal_suffix(num, expected):
 
 
 @pytest.fixture
-def extractor():
+def extractor(monkeypatch):
+    monkeypatch.setattr("lexiflow.extractor.settings.OPENAI_API_KEY", "sk-test")
     with patch("lexiflow.extractor.OpenAI") as mock_openai_cls:
         mock_openai_cls.return_value = MagicMock()
         yield MetadataExtractor()
+
+
+def test_missing_ai_key_raises_clear_error(monkeypatch):
+    monkeypatch.setattr("lexiflow.extractor.settings.OPENAI_API_KEY", "")
+    monkeypatch.setattr(
+        "lexiflow.extractor.settings.AI_API_KEY_ENV", "DEEPSEEK_API_KEY"
+    )
+    with patch("lexiflow.extractor.OpenAI") as mock_openai_cls:
+        with pytest.raises(ValueError, match="DEEPSEEK_API_KEY is not set"):
+            MetadataExtractor()
+        mock_openai_cls.assert_not_called()
 
 
 # -------- attorney name cleaning --------

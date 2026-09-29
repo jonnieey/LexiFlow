@@ -36,6 +36,11 @@ class MetadataExtractor:
 
     def __init__(self) -> None:
         self.form_map: Dict[str, Any] = {}
+        if not settings.OPENAI_API_KEY:
+            raise ValueError(
+                f"{settings.AI_API_KEY_ENV} is not set (API key env var "
+                "chosen by ai_api_key_env). Export it in your shell."
+            )
         self.client: OpenAI = OpenAI(
             api_key=settings.OPENAI_API_KEY,
             base_url=settings.BASE_URL,
