@@ -12,6 +12,7 @@ from textual import events, on
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
+from textual.widget import Widget
 from textual.widgets import (
     Button,
     Checkbox,
@@ -436,6 +437,12 @@ class BaseTable(Container):
             return
         row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
         self._open_context_menu(row_key)
+
+
+def field_row(label: str, widget: Widget) -> Horizontal:
+    """Label and its input on a single terminal row (see .field-row in
+    tui.css), so modal forms fit small terminals without scrolling."""
+    return Horizontal(Label(label), widget, classes="field-row")
 
 
 class VimModalMixin:

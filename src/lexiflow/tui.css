@@ -456,3 +456,43 @@ Button.-error {
 .selected-row {
     background: $accent 30%;
 }
+
+/* Compact form rows: label + widget share one terminal row (field_row()
+   in tui.py). Borders are dropped; focus shows as a background tint. */
+.field-row {
+    height: 1;
+    margin: 0 0 0 0;
+}
+.field-row > Label {
+    width: 16;
+    color: $accent;
+}
+.field-row > Input,
+.field-row > Select {
+    width: 1fr;
+}
+.field-row > Input {
+    border: none;
+    height: 1;
+    padding: 0 1;
+    background: $panel;
+}
+.field-row > Input:focus {
+    border: none;
+    background: $accent 30%;
+}
+.field-row > Select > SelectCurrent {
+    border: none;
+    height: 1;
+    padding: 0 1;
+    background: $panel;
+}
+.field-row > Select:focus > SelectCurrent {
+    border: none;
+    background: $accent 30%;
+}
+.field-row > Select,
+.field-row > Select:focus {
+    border: none;
+    height: 1;
+}
