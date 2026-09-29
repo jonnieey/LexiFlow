@@ -2,6 +2,7 @@
 Core PDF rendering interface and backend registry.
 """
 
+import asyncio
 import importlib
 import logging
 import os
@@ -116,16 +117,20 @@ class PDFRenderer:
     async def render_async(
         self, html: str, output_path: Path
     ) -> Optional[bytes]:
-        """Render HTML to PDF asynchronously."""
+        """Render HTML to PDF asynchronously.
+
+        Backends without native async support render in a worker thread.
+        """
         logger.info(
             "Rendering PDF asynchronously with backend '%s' to %s",
             self.backend_name,
             output_path,
         )
+        backend = self._backend_instance
         try:
-            return await self._backend_instance.render_async(
-                html, output_path
-            )
+            if type(backend).render_async is PDFBackend.render_async:
+                return await asyncio.to_thread(backend.render, html, output_path)
+            return await backend.render_async(html, output_path)
         except Exception as e:
             logger.error("Async PDF rendering failed: %s", e, exc_info=True)
             raise

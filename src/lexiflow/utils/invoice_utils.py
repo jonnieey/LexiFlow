@@ -34,13 +34,9 @@ def _init_jinja_env(custom_templates_dir: Optional[Path]) -> Environment:
 async def htmlstr_to_pdf_async(
     htmlstr: str, output_path: Path
 ) -> Optional[bytes]:
-    """
-    Async HTML to PDF rendering using the default async backend (Playwright).
-    """
+    """Async HTML to PDF rendering using the configured PDF backend."""
     output_path = Path(output_path)
-    # Use Playwright backend for async rendering (it's the only async backend)
-    renderer = PDFRenderer(backend="playwright")
-    return await renderer.render_async(htmlstr, output_path)
+    return await PDFRenderer().render_async(htmlstr, output_path)
 
 
 def htmlstr_to_pdf(htmlstr: str, output_path: Path) -> Optional[bytes]:
