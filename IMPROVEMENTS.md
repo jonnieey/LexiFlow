@@ -42,3 +42,7 @@ Status: pending | approved | declined | done
 
 ### Verification note (superseded)
 With the `requires-python` fix above, `uv sync` now installs cleanly and `uv run --with pytest pytest -q` passes (4/4, including the earlier `testpaths`/`_mask_secret` fixes). All LegatoFlow fixes in this file are now confirmed against a real environment, not just `py_compile`.
+
+## Config / PDF (found during Phase 5)
+- [ ] **pending** — `utils/invoice_utils.py:htmlstr_to_pdf_async` hardcodes `PDFRenderer(backend="playwright")`, ignoring the configured `pdf_backend` (and failing if Playwright isn't installed). Only Playwright implements true async; option: use the default backend and fall back to `asyncio.to_thread(render)` for sync backends.
+- [ ] **pending** — legacy `~/.config/legatoflow/config` still holds plaintext API keys after migration (left untouched by design). Suggest user deletes it (or its key entries) once env vars are exported.
