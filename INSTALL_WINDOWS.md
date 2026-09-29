@@ -65,3 +65,15 @@ If you are comfortable with the command line:
     ```powershell
     trans5
     ```
+
+## API Keys
+
+API keys are read from environment variables only (never from the config file). Set them once per user in PowerShell, then open a new terminal:
+
+```powershell
+setx OPENAI_API_KEY "..."
+setx SPEECHMATIX_API_KEY "..."
+setx REVAI_API_KEY "..."
+```
+
+The PDF backend can be chosen at runtime via `pdf_backend` in the config file (`update config --pdf-backend playwright`) or the TUI Configuration screen; `LEXIFLOW_PDF_BACKEND` still overrides it.

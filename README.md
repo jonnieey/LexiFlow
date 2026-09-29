@@ -67,7 +67,7 @@ uv pip install -e '.[all]'
 
 The system will auto-detect available backends with priority: Playwright > WeasyPrint > xhtml2pdf.
 
-You can override the backend selection with the `LEXIFLOW_PDF_BACKEND` environment variable (set to `playwright`, `weasyprint`, or `xhtml2pdf`).
+To pick a backend explicitly, set `pdf_backend` in the config file (`auto`, `playwright`, `weasyprint`, or `xhtml2pdf`) — via `update config --pdf-backend <name>` in the CLI or the TUI Configuration screen. The `LEXIFLOW_PDF_BACKEND` environment variable overrides the config file.
 
 ## Usage
 
@@ -121,17 +121,40 @@ Use `help <command>` for detailed syntax (e.g., `help add`).
 
 ## Configuration
 
-LexiFlow uses YAML for configuration, in the **same locations Transcriptor already used** — this is a merge, not a fresh app, so existing data/config/backups continue to work unchanged:
+All settings live in **one** YAML file:
 
-*   **Config File:** `~/.config/transcriptor/config.yaml` (Linux)
-*   **Profile:** `~/.local/share/transcriptor/profile.yaml` (Stores your business details for invoices)
+*   **Config File:** `~/.config/lexiflow/config.yaml` (Linux; platform config dir elsewhere)
+*   **Data / Profile:** `~/.local/share/transcriptor/` (unchanged — existing jobs, DB and backups keep working)
 
-**Default `config.yaml`:**
+On first run, the old `~/.config/transcriptor/config.yaml` and LegatoFlow `~/.config/legatoflow/config` are merged into it automatically. The old files are left in place and can be deleted once you've checked the new one.
+
+**Example `config.yaml`:**
 ```yaml
 base_dir: /home/user/.local/share/transcriptor
 date_format: "%Y-%m-%d"
 invoice_theme: default
+pdf_backend: auto          # auto | playwright | weasyprint | xhtml2pdf
+ai_model: gpt-4o-mini
+base_url: null             # OpenAI-compatible endpoint, e.g. https://api.deepseek.com
+notebooklm_notebook_id: null
+notebooklm_prompt_file: null
+file_manager: ""
+terminal: ""
 ```
+
+Edit it through the TUI Configuration screen, `update config ...`, or `config set <KEY> <value>`.
+
+### API keys (environment variables only)
+
+API keys are **never** read from or stored in the config file. Export them in your shell profile:
+
+```sh
+export OPENAI_API_KEY=...
+export SPEECHMATIX_API_KEY=...
+export REVAI_API_KEY=...
+```
+
+`config show` lists which keys are set (masked). `config set OPENAI_API_KEY ...` is refused. A `.env` file in the working directory is still loaded for development convenience.
 
 ## Windows Installation
 
