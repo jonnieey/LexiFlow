@@ -7,7 +7,7 @@ import threading
 from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 import cmd2
 from prompt_toolkit import prompt
@@ -19,10 +19,12 @@ from lexiflow.config import (
     SECRET_KEYS,
     ai_api_key_env_name,
     config_manager,
+    configurable_keys,
 )
 from lexiflow.extractor import MetadataExtractor, fill_template
 from lexiflow.input_handler import CLIInputHandler
 from lexiflow.pdf import BACKEND_PRIORITY, PDFRenderer, not_installed_message
+from lexiflow.utils.currency import CURRENCY_SYMBOLS
 from lexiflow.services import get_service
 from lexiflow.utils import (
     invoice_template_themes,
@@ -418,11 +420,51 @@ config_show_parser = config_subparsers.add_parser(
     "show", help="show current configuration"
 )
 
+_PATH_CONFIG_KEYS = {"base_dir", "notebooklm_prompt_file", "notebooklm_storage_path"}
+
+
+def _complete_config_key(cmd) -> List[cmd2.CompletionItem]:
+    """'config set <TAB>': every configurable key with its current value."""
+    return [
+        cmd2.CompletionItem(key, "" if (v := config_manager.get(key)) is None else str(v))
+        for key in configurable_keys()
+    ]
+
+
+def _complete_config_value(
+    cmd, text: str, line: str, begidx: int, endidx: int, arg_tokens
+) -> List[str]:
+    """'config set <key> <TAB>': suggestions that fit the chosen key."""
+    key = (arg_tokens.get("key") or [""])[0].lower()
+    if key in _PATH_CONFIG_KEYS:
+        return cmd.path_complete(text, line, begidx, endidx)
+    if key == "pdf_backend":
+        choices = ["auto", *BACKEND_PRIORITY]
+    elif key == "invoice_theme":
+        choices = invoice_template_themes()
+    elif key in ("display_currency", "invoice_currency"):
+        choices = sorted(CURRENCY_SYMBOLS)
+    elif key == "ai_api_key_env":
+        # Variable names only -- never their values.
+        choices = sorted(n for n in os.environ if n.endswith("_API_KEY"))
+    else:
+        current = config_manager.get(key)
+        choices = [] if current is None else [str(current)]
+    return cmd.basic_complete(text, line, begidx, endidx, choices)
+
+
 config_set_parser = config_subparsers.add_parser(
     "set", help="set a configuration value"
 )
-config_set_parser.add_argument("key", help="Configuration key to set")
-config_set_parser.add_argument("value", help="Value to set")
+config_set_parser.add_argument(
+    "key",
+    help="Configuration key to set",
+    choices_provider=_complete_config_key,
+    descriptive_header="Current value",
+)
+config_set_parser.add_argument(
+    "value", help="Value to set", completer=_complete_config_value
+)
 
 
 extract_parser = base_subparsers.add_parser(
