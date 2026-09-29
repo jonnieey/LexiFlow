@@ -118,6 +118,9 @@ Button.-error {
 .restore-label, .purge-label, .about-text {
     margin-bottom: 1;
 }
+.about-text {
+    width: 100%;
+}
 .context-title {
     text-align: center;
     text-style: bold;
@@ -365,6 +368,7 @@ ModalScreen {
 }
 #restore-buttons, #purge-buttons, #about-buttons, #add-cutoffs-buttons,
 #add-buttons {
+    height: auto;
     margin-top: 1;
     align: center middle;
     width: 100%;

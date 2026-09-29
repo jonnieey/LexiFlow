@@ -9,7 +9,7 @@ import pytest
 from textual.widgets import Button, Label
 
 import lexiflow.base as base_module
-from lexiflow.tui import ConfirmDelete, TranscriptorTUI
+from lexiflow.tui import AboutScreen, ConfirmDelete, TranscriptorTUI
 
 
 @pytest.fixture
@@ -49,3 +49,27 @@ def test_confirm_delete_is_a_small_centered_box(isolated_app):
 
     asyncio.run(_run())
 
+
+
+def test_about_fits_its_content(isolated_app):
+    async def _run():
+        async with isolated_app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            isolated_app.push_screen(AboutScreen())
+            await pilot.pause()
+            screen = isolated_app.screen
+            box = screen.query_one("#about-screen")
+            assert box.region.height < screen.region.height
+            left = box.region.x
+            right = screen.region.right - box.region.right
+            assert abs(left - right) <= 1
+            description = box.query(".about-text").last()
+            # description wraps instead of being clipped
+            assert box.region.contains_region(description.region)
+            assert "jobs." in str(description.render())
+            close = box.query_one("#close-about")
+            # no dead space: Close follows the text, box ends at Close
+            assert close.region.y - description.region.bottom <= 2
+            assert box.region.bottom - close.region.bottom <= 3
+
+    asyncio.run(_run())
