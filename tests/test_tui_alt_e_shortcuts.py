@@ -10,7 +10,7 @@ import asyncio
 import pytest
 
 import lexiflow.base as base_module
-from lexiflow.tui import ConfigurationScreen, RateEditScreen, TranscriptorTUI
+from lexiflow.tui import RateEditScreen, TranscriptorTUI
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def isolated_app(tmp_path, monkeypatch):
     return app
 
 
-def test_alt_e_opens_configuration_edit_screen(isolated_app):
+def test_alt_e_focuses_configuration_form(isolated_app):
     async def _run():
         async with isolated_app.run_test() as pilot:
             await pilot.pause()
@@ -37,7 +37,9 @@ def test_alt_e_opens_configuration_edit_screen(isolated_app):
             await pilot.press("alt+e")
             await pilot.pause()
 
-            assert isinstance(isolated_app.screen, ConfigurationScreen)
+            # editing happens in the tab itself: no modal, first field focused
+            assert isolated_app.screen is isolated_app.screen_stack[0]
+            assert isolated_app.screen.focused.id == "base_dir"
 
     asyncio.run(_run())
 

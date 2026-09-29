@@ -1,4 +1,5 @@
-"""Edit Configuration modal must show every field on a small terminal.
+"""Configuration is edited directly in its tab: every field, Save/Revert
+and the Data Management buttons fit a small terminal without scrolling.
 
 Isolation as in test_tui_navigation.py (HOME/XDG + DEFAULT_CONFIG base_dir).
 """
@@ -6,11 +7,10 @@ Isolation as in test_tui_navigation.py (HOME/XDG + DEFAULT_CONFIG base_dir).
 import asyncio
 
 import pytest
-from textual.containers import VerticalScroll
-from textual.widgets import Select
+from textual.widgets import Input
 
 import lexiflow.base as base_module
-from lexiflow.tui import ConfigurationScreen, TranscriptorTUI
+from lexiflow.tui import Configuration, TranscriptorTUI
 
 
 @pytest.fixture
@@ -24,21 +24,47 @@ def isolated_app(tmp_path, monkeypatch):
     return TranscriptorTUI()
 
 
-def test_config_form_fits_without_scrolling(isolated_app):
+def test_config_tab_form_fits_without_scrolling(isolated_app):
     async def _run():
         async with isolated_app.run_test(size=(80, 24)) as pilot:
             await pilot.pause()
-            isolated_app.push_screen(ConfigurationScreen())
+            isolated_app.query_one("TabbedContent").active = "config"
             await pilot.pause()
+            tab = isolated_app.query_one(Configuration)
+            container = tab.query_one("#config-container")
+            assert container.max_scroll_y == 0
             screen = isolated_app.screen
+            for wid in (
+                "#base_dir",
+                "#pdf_backend",
+                "#save-config",
+                "#revert-config",
+                "#backup-db",
+            ):
+                region = tab.query_one(wid).region
+                assert screen.region.contains_region(region), wid
 
-            form = screen.query_one("#config-form", VerticalScroll)
-            assert form.max_scroll_y == 0
+    asyncio.run(_run())
 
-            last = screen.query_one("#pdf_backend", Select)
-            assert form.region.contains_region(last.region)
-            # Save/Cancel stay visible, docked below the form
-            save = screen.query_one("#save-config")
-            assert screen.region.contains_region(save.region)
+
+def test_config_tab_saves_and_reverts(isolated_app):
+    async def _run():
+        async with isolated_app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            isolated_app.query_one("TabbedContent").active = "config"
+            await pilot.pause()
+            tab = isolated_app.query_one(Configuration)
+            date_format = tab.query_one("#date_format", Input)
+            date_format.value = "%d/%m/%Y"
+            tab.save_config()
+            await pilot.pause()
+            assert isolated_app.transcriptor.config.date_format == "%d/%m/%Y"
+
+            # unsaved edit is discarded by Revert
+            date_format.value = "junk"
+            await pilot.click("#revert-config")
+            await pilot.pause()
+            assert date_format.value == "%d/%m/%Y"
+            assert isolated_app.transcriptor.config.date_format == "%d/%m/%Y"
 
     asyncio.run(_run())

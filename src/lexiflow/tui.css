@@ -36,7 +36,7 @@ Input:focus, Select:focus, TextArea:focus {
 }
 
 /* Common classes */
-.preview-title, .edit-title, .config-title {
+.preview-title, .edit-title {
     text-style: bold;
     color: $accent;
     text-align: center;
@@ -171,7 +171,7 @@ Button.-error {
 ModalScreen {
     align: center middle;
 }
-#invoice-preview, #job-edit, #config-edit,
+#invoice-preview, #job-edit,
 #client-edit, #rate-edit, #profile-edit, #context-menu,
 #document-processing-screen {
     width: 90%;
@@ -232,13 +232,6 @@ ModalScreen {
 #job-form-container Label {
     color: $accent;
 }
-#config-edit {
-    width: 90%;
-    height: 90%;
-}
-#config-form {
-    height: 1fr;
-}
 #invoice-markdown {
     height: 1fr;
     border: solid $panel;
@@ -267,11 +260,9 @@ ModalScreen {
     border: solid $panel;
     background: $panel;
 }
-#config-display {
-    margin: 1;
-    padding: 1;
-    border: solid $panel;
-    background: $panel;
+#config-form {
+    height: auto;
+    margin: 0 1;
 }
 #job-form-container {
     height: 1fr;

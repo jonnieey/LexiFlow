@@ -3558,87 +3558,145 @@ class ProfileEditScreen(BaseEditScreen):
         self.app.notify("Profile updated successfully!")
 
 
-class ConfigurationScreen(VimModalMixin, ModalScreen):
-    """Screen for editing configuration"""
+class Configuration(Container):
+    """Configuration tab: settings are edited in place (compact fields +
+    Save/Revert), no separate edit modal."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._vim_bindings = [
+            ("e", "Edit configuration", "action_edit_config"),
+            ("alt+e", "Edit configuration", "action_edit_config"),
+            ("r", "Revert unsaved changes", "action_refresh_table"),
+        ]
 
     def compose(self) -> ComposeResult:
-        with Container(id="config-edit"):
-            yield Label("Edit Configuration", classes="config-title")
-
-            with VerticalScroll(id="config-form"):
-                config = self.app.transcriptor.config
-                yield field_row(
-                    "Base Directory:",
-                    Input(value=config.base_dir, id="base_dir"),
-                )
-                yield field_row(
-                    "Date Format:",
-                    Input(value=config.date_format, id="date_format"),
-                )
-
-                themes = invoice_template_themes()
-                yield field_row(
-                    "Invoice Theme:",
-                    Select(
-                        [(theme, theme) for theme in themes],
-                        id="invoice_theme",
-                        value=config.invoice_theme,
-                    ),
-                )
-
-                currencies = sorted(
-                    set(CURRENCY_SYMBOLS.keys())
-                    | {config.display_currency, config.invoice_currency}
-                )
-                yield field_row(
-                    "Display Currency:",
-                    Select(
-                        [(code, code) for code in currencies],
-                        id="display_currency",
-                        value=config.display_currency,
-                    ),
-                )
-                yield field_row(
-                    "Invoice Currency:",
-                    Select(
-                        [(code, code) for code in currencies],
-                        id="invoice_currency",
-                        value=config.invoice_currency,
-                    ),
-                )
-                yield field_row(
-                    "FX Rate (0=auto):",
-                    Input(
-                        value=str(config.conversion_rate),
-                        id="conversion_rate",
-                    ),
-                )
-
-                installed = PDFRenderer.available_backends()
-                backends = ["auto", *BACKEND_PRIORITY]
-                if config.pdf_backend not in backends:
-                    backends.append(config.pdf_backend)
-                yield field_row(
-                    "PDF Backend:",
-                    Select(
-                        [
-                            (
-                                name
-                                if name == "auto" or name in installed
-                                else f"{name} (not installed)",
-                                name,
-                            )
-                            for name in backends
-                        ],
-                        id="pdf_backend",
-                        value=config.pdf_backend,
-                        allow_blank=False,
-                    ),
-                )
-
-            with Horizontal(id="edit-buttons"):
+        with VerticalScroll(id="config-container"):
+            yield Label("Configuration & Settings", classes="title")
+            with Vertical(id="config-form"):
+                yield from self.config_fields()
+            with Horizontal(classes="button-bar"):
                 yield Button("Save", variant="primary", id="save-config")
-                yield Button("Cancel", variant="default", id="cancel-config")
+                yield Button("Revert", id="revert-config")
+
+            yield Label("Data Management", classes="title")
+            with Horizontal(classes="button-bar"):
+                yield Button("Backup Database", id="backup-db")
+                yield Button("Restore Database", id="restore-db")
+                yield Button(
+                    "Purge Job Files", variant="error", id="purge-jobs"
+                )
+                yield Button("About", id="about-app")
+
+    def config_fields(self):
+        config = self.app.transcriptor.config
+        yield field_row(
+            "Base Directory:",
+            Input(value=config.base_dir, id="base_dir"),
+        )
+        yield field_row(
+            "Date Format:",
+            Input(value=config.date_format, id="date_format"),
+        )
+
+        themes = invoice_template_themes()
+        yield field_row(
+            "Invoice Theme:",
+            Select(
+                [(theme, theme) for theme in themes],
+                id="invoice_theme",
+                value=config.invoice_theme,
+            ),
+        )
+
+        currencies = sorted(
+            set(CURRENCY_SYMBOLS.keys())
+            | {config.display_currency, config.invoice_currency}
+        )
+        yield field_row(
+            "Display Currency:",
+            Select(
+                [(code, code) for code in currencies],
+                id="display_currency",
+                value=config.display_currency,
+            ),
+        )
+        yield field_row(
+            "Invoice Currency:",
+            Select(
+                [(code, code) for code in currencies],
+                id="invoice_currency",
+                value=config.invoice_currency,
+            ),
+        )
+        yield field_row(
+            "FX Rate (0=auto):",
+            Input(
+                value=str(config.conversion_rate),
+                id="conversion_rate",
+            ),
+        )
+
+        installed = PDFRenderer.available_backends()
+        backends = ["auto", *BACKEND_PRIORITY]
+        if config.pdf_backend not in backends:
+            backends.append(config.pdf_backend)
+        yield field_row(
+            "PDF Backend:",
+            Select(
+                [
+                    (
+                        name
+                        if name == "auto" or name in installed
+                        else f"{name} (not installed)",
+                        name,
+                    )
+                    for name in backends
+                ],
+                id="pdf_backend",
+                value=config.pdf_backend,
+                allow_blank=False,
+            ),
+        )
+
+    def get_vim_bindings(self) -> List[tuple[str, str]]:
+        return [(key, desc) for key, desc, _ in self._vim_bindings]
+
+    def handle_vim_key(self, key: str) -> bool:
+        for k, _, method_name in self._vim_bindings:
+            if key == k:
+                method = getattr(self, method_name, None)
+                if method:
+                    method()
+                    return True
+        return False
+
+    def refresh_table(self):
+        """Reload the form from the saved configuration (drops unsaved
+        edits)."""
+        config = self.app.transcriptor.config
+        for field in ("base_dir", "date_format"):
+            self.query_one(f"#{field}", Input).value = getattr(config, field)
+        self.query_one("#conversion_rate", Input).value = str(
+            config.conversion_rate
+        )
+        for field in (
+            "invoice_theme",
+            "display_currency",
+            "invoice_currency",
+            "pdf_backend",
+        ):
+            self.query_one(f"#{field}", Select).value = getattr(config, field)
+
+    def action_edit_config(self):
+        self.query_one("#base_dir", Input).focus()
+
+    def action_refresh_table(self):
+        self.refresh_table()
+
+    @on(Button.Pressed, "#revert-config")
+    def revert_config(self):
+        self.refresh_table()
 
     @on(Button.Pressed, "#save-config")
     def save_config(self):
@@ -3685,86 +3743,7 @@ class ConfigurationScreen(VimModalMixin, ModalScreen):
         # Save to file
         self.app.transcriptor.save_config()
         self.app.notify("Configuration saved successfully!")
-        self.dismiss(True)
-        # Refresh config display
-
-    @on(Button.Pressed, "#cancel-config")
-    def cancel_config(self):
-        self.dismiss(True)
-
-    def action_escape_dismiss(self) -> None:
-        self.dismiss(True)
-
-
-class Configuration(Container):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._vim_bindings = [
-            ("e", "Edit configuration", "action_edit_config"),
-            ("alt+e", "Edit configuration", "action_edit_config"),
-            ("r", "Refresh cutoffs", "action_refresh_table"),
-        ]
-
-    def compose(self) -> ComposeResult:
-        with VerticalScroll(id="config-container"):
-            yield Label("Configuration & Settings", classes="title")
-            yield Static(id="config-display")
-            with Horizontal(classes="button-bar"):
-                yield Button(
-                    "Edit Config", variant="primary", id="edit-config"
-                )
-
-            yield Label("Data Management", classes="title")
-            with Horizontal(classes="button-bar"):
-                yield Button("Backup Database", id="backup-db")
-                yield Button("Restore Database", id="restore-db")
-                yield Button(
-                    "Purge Job Files", variant="error", id="purge-jobs"
-                )
-                yield Button("About", id="about-app")
-
-    def on_mount(self):
-        self.refresh_table()
-
-    def get_vim_bindings(self) -> List[tuple[str, str]]:
-        return [(key, desc) for key, desc, _ in self._vim_bindings]
-
-    def handle_vim_key(self, key: str) -> bool:
-        for k, _, method_name in self._vim_bindings:
-            if key == k:
-                method = getattr(self, method_name, None)
-                if method:
-                    method()
-                    return True
-        return False
-
-    def refresh_table(self):
-        """Load current configuration for display"""
-        config_display = self.query_one("#config-display", Static)
-        config = self.app.transcriptor.config
-        display_text = f"""
-Base Directory: {config.base_dir}
-Date Format: {config.date_format}
-Invoice Theme: {config.invoice_theme}
-Display Currency: {config.display_currency}
-Invoice Currency: {config.invoice_currency}
-Conversion Rate: {config.conversion_rate}
-PDF Backend: {config.pdf_backend}
-        """
-        config_display.update(display_text)
-
-    def action_edit_config(self):
-        def check_edit(confirm):
-            if confirm:
-                self.refresh_table()
-
-        self.app.push_screen(ConfigurationScreen(), check_edit)
-
-    @on(Button.Pressed, "#edit-config")
-    def on_edit_config_button(self):
-        self.action_edit_config()
-
-    def action_refresh_table(self):
+        # show what was stored (e.g. an unparsable rate saved as 0.0)
         self.refresh_table()
 
     @on(Button.Pressed, "#backup-db")
