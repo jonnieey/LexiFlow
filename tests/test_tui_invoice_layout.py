@@ -81,3 +81,27 @@ def test_all_invoice_buttons_visible_at_80_cols(isolated_app):
                 assert pane.contains_region(region), wid
 
     asyncio.run(_run())
+
+
+CUTOFFS = [["Cutoff", "Deposit"]] + [
+    [f"2026-{m:02d}-15", f"2026-{m:02d}-25"] for m in range(1, 13)
+]
+
+
+def test_cutoffs_pane_fits_its_dates(isolated_app):
+    isolated_app.transcriptor.load_cutoffs = lambda *a, **k: CUTOFFS
+
+    async def _run():
+        async with isolated_app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            tab = await _open_invoicing(isolated_app, pilot)
+            screen = isolated_app.screen
+            table = tab.query_one("#invoice-cutoffs-table")
+            assert table.row_count == 12
+            assert table.max_scroll_x == 0  # both date columns fully shown
+            title = tab.query_one("#invoice-cutoffs-container .title")
+            assert title.region.height <= 2
+            add = tab.query_one("#cutoffs-add").region
+            assert screen.region.contains_region(add)
+
+    asyncio.run(_run())

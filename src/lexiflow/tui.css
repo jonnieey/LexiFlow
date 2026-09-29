@@ -378,7 +378,7 @@ ModalScreen {
     height: 1fr;
 }
 #invoice-input-pane {
-    width: 3fr;
+    width: 1fr;
     height: 1fr;
     padding: 0 1;
 }
@@ -403,6 +403,7 @@ ModalScreen {
 }
 #invoice-actions > Button {
     min-width: 0;
+    padding: 0;
     margin: 0 1 0 0;
 }
 #invoice-results {
@@ -414,22 +415,24 @@ ModalScreen {
     height: 1fr;
     min-height: 4;
 }
+/* Sized to its two date columns (+ scrollbar); the left pane gets the
+   rest. */
 #invoice-cutoffs-container {
-    width: 1fr;
-    padding: 1;
+    width: 32;
+    padding: 0 1;
     border-left: solid $panel;
     background: $surface;
 }
 #invoice-cutoffs-container .title {
+    width: 100%;
+    margin: 0;
     text-style: bold;
     color: $accent;
     text-align: center;
-    padding-bottom: 1;
     border-bottom: solid $accent;
 }
 #invoice-cutoffs-table {
     height: 1fr;
-    margin-top: 1;
 }
 #invoice-preview {
     width: 90%;
