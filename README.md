@@ -136,25 +136,36 @@ invoice_theme: default
 pdf_backend: auto          # auto | playwright | weasyprint | xhtml2pdf
 ai_model: gpt-4o-mini
 base_url: null             # OpenAI-compatible endpoint, e.g. https://api.deepseek.com
+ai_api_key_env: null       # env var holding the AI key; null = OPENAI_API_KEY
 notebooklm_notebook_id: null
 notebooklm_prompt_file: null
 file_manager: ""
 terminal: ""
 ```
 
-Edit it through the TUI Configuration screen, `update config ...`, or `config set <KEY> <value>`.
+Edit it through the TUI Configuration screen, `update config ...`, or `config set <key> <value>`. In the CLI, `config set <TAB>` lists every key with its current value, and `config set <key> <TAB>` suggests values (backends, themes, currencies, key env var names, paths). Unknown keys and invalid values (e.g. `conversion_rate abc`) are rejected without touching the file.
 
 ### API keys (environment variables only)
 
 API keys are **never** read from or stored in the config file. Export them in your shell profile:
 
 ```sh
-export OPENAI_API_KEY=...
+export OPENAI_API_KEY=...        # or whichever var ai_api_key_env names
 export SPEECHMATIX_API_KEY=...
 export REVAI_API_KEY=...
 ```
 
-`config show` lists which keys are set (masked). `config set OPENAI_API_KEY ...` is refused. A `.env` file in the working directory is still loaded for development convenience.
+**Using a non-OpenAI provider (e.g. DeepSeek):** keep `OPENAI_API_KEY` for OpenAI and point LexiFlow at the right variable, so the endpoint and key always match:
+
+```sh
+config set base_url https://api.deepseek.com
+config set ai_model deepseek-v4-flash
+config set ai_api_key_env DEEPSEEK_API_KEY
+```
+
+If the named variable isn't set, extraction fails with `<NAME> is not set` rather than falling back to another key.
+
+`config show` lists which variables are in use (masked). `config set <anything>_API_KEY ...` is refused. A `.env` file is still loaded for development, but variables already set in your shell take precedence.
 
 ## Windows Installation
 
