@@ -392,3 +392,21 @@ def test_cli_config_show_uses_configured_ai_key_env(tmp_path, monkeypatch):
     assert "DEEPSEEK_API_KEY (ai_api_key_env): ds-a" in text
     assert "ds-abcdefghijkl" not in text
     assert "  OPENAI_API_KEY:" not in text
+
+
+# --- .env precedence -----------------------------------------------------
+
+
+def test_shell_env_beats_dotenv(monkeypatch, tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("LEXIFLOW_TEST_VAR=from-dotenv\nLEXIFLOW_TEST_ONLY_FILE=x\n")
+    monkeypatch.setenv("LEXIFLOW_TEST_VAR", "from-shell")
+    monkeypatch.delenv("LEXIFLOW_TEST_ONLY_FILE", raising=False)
+
+    cfg.load_env_file(env)
+
+    import os
+
+    assert os.environ["LEXIFLOW_TEST_VAR"] == "from-shell"
+    assert os.environ["LEXIFLOW_TEST_ONLY_FILE"] == "x"
+    monkeypatch.delenv("LEXIFLOW_TEST_ONLY_FILE")

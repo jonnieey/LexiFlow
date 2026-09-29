@@ -222,8 +222,15 @@ def migrate_legacy_configs(
     return True
 
 
-# Load legacy .env for backward compatibility
-load_dotenv(override=True)
+def load_env_file(path: Optional[Path] = None) -> None:
+    """Load a .env file for development; shell env vars always win."""
+    if path is None:
+        load_dotenv(override=False)
+    else:
+        load_dotenv(path, override=False)
+
+
+load_env_file()
 
 migrate_legacy_configs()
 
