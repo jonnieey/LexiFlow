@@ -403,3 +403,35 @@ def test_config_migrate_command_removed():
     assert not hasattr(cli, "config_migrate_parser")
     assert not hasattr(cli.TranscriptorCMD, "config_migrate")
     assert not hasattr(cfg.ConfigManager, "migrate_from_env")
+
+
+# --- config set validation -----------------------------------------------
+
+
+def test_manager_rejects_unknown_key(tmp_path):
+    path = tmp_path / "config.yaml"
+    mgr = cfg.ConfigManager(config_file=path)
+
+    with pytest.raises(ValueError, match="Unknown config key 'bogus'"):
+        mgr.set("bogus", "x")
+    assert not path.exists()
+
+
+def test_manager_rejects_invalid_value_without_writing(tmp_path):
+    path = tmp_path / "config.yaml"
+    mgr = cfg.ConfigManager(config_file=path)
+    mgr.set("ai_model", "gpt-x")
+    before = path.read_text()
+
+    with pytest.raises(ValueError, match="conversion_rate"):
+        mgr.set("conversion_rate", "abc")
+    assert path.read_text() == before
+
+
+def test_manager_coerces_value_to_field_type(tmp_path):
+    path = tmp_path / "config.yaml"
+    mgr = cfg.ConfigManager(config_file=path)
+
+    mgr.set("NOTEBOOKLM_MAX_METADATA_TOKENS", "600")
+
+    assert yaml.safe_load(path.read_text())["notebooklm_max_metadata_tokens"] == 600

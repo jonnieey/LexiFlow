@@ -590,6 +590,13 @@ class TranscriptorCMD(cmd2.Cmd):
             PDFRenderer.set_default_backend(name)
         self._update_prompt()
 
+    def _apply_pdf_backend(self, name: str) -> None:
+        """Use a newly configured backend now, if it is installed."""
+        if name in ("auto", *PDFRenderer.available_backends()):
+            self.pdf_backend = name
+        else:
+            self.poutput(not_installed_message(name))
+
     def do_EOF(self, arg):
         """
 
@@ -843,10 +850,7 @@ class TranscriptorCMD(cmd2.Cmd):
 
         if args.pdf_backend:
             config.pdf_backend = args.pdf_backend
-            if args.pdf_backend in ("auto", *PDFRenderer.available_backends()):
-                self.pdf_backend = args.pdf_backend
-            else:
-                self.poutput(not_installed_message(args.pdf_backend))
+            self._apply_pdf_backend(args.pdf_backend)
 
         self.app.config = config
 
@@ -1755,6 +1759,8 @@ class TranscriptorCMD(cmd2.Cmd):
         if Path(config_manager.config_file) == Path(self.app.CONFIG_FILE):
             self.app.config = self.app._load_config()
         self.poutput(f"Set {args.key} = {_mask_secret(args.key, args.value)}")
+        if args.key.lower() == "pdf_backend":
+            self._apply_pdf_backend(args.value)
 
     config_set_parser.set_defaults(func=config_set)
 

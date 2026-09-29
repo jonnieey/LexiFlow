@@ -250,6 +250,24 @@ def test_do_update_config_pdf_backend_rejects_unknown(cli_app, mock_transcriptor
     mock_transcriptor.return_value.save_config.assert_not_called()
 
 
+def test_config_set_pdf_backend_applies_live(
+    cli_app, mock_transcriptor, tmp_path, monkeypatch
+):
+    from lexiflow import cli
+    from lexiflow.config import ConfigManager
+    from lexiflow.pdf import PDFRenderer
+
+    path = tmp_path / "config.yaml"
+    monkeypatch.setattr(cli, "config_manager", ConfigManager(config_file=path))
+    mock_transcriptor.return_value.CONFIG_FILE = path
+    with patch.object(PDFRenderer, "_default_backend", None), patch.object(
+        PDFRenderer, "_backends", {"xhtml2pdf": MagicMock()}
+    ):
+        cli_app.onecmd("config set pdf_backend xhtml2pdf")
+        assert PDFRenderer.get_default_backend() == "xhtml2pdf"
+    assert "[xhtml2pdf]" in cli_app.prompt
+
+
 def test_do_update_profile(cli_app, mock_transcriptor):
     """Test 'update profile' command"""
     result = cli_app.onecmd("update profile --name 'Test User'")

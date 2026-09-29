@@ -7,6 +7,9 @@ from typing import Any, Dict, Optional
 import yaml
 from dotenv import load_dotenv
 from platformdirs import user_config_dir, user_data_dir
+from pydantic import ValidationError
+
+from lexiflow.models import Config
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -39,6 +42,11 @@ DEFAULT_AI_API_KEY_ENV = "OPENAI_API_KEY"
 def is_secret_key(key: str) -> bool:
     key = key.upper()
     return key in SECRET_KEYS or key.endswith("_API_KEY")
+
+
+def configurable_keys() -> list:
+    """Config file keys that can be set (lowercase field names)."""
+    return sorted(Config.model_fields)
 
 
 def default_config_path() -> Path:
@@ -103,8 +111,19 @@ class ConfigManager:
                 f"variable (export {key.upper()}=...) instead of in the "
                 "config file."
             )
+        key = key.lower()
+        if key not in Config.model_fields:
+            raise ValueError(
+                f"Unknown config key '{key}'. Valid keys: "
+                + ", ".join(configurable_keys())
+            )
         self._reload_for_write()
-        self.config_data[key.lower()] = value
+        candidate = {**self.config_data, key: value}
+        try:
+            validated = Config(**candidate)
+        except ValidationError as e:
+            raise ValueError(f"Invalid value for {key}: {e}") from e
+        self.config_data[key] = getattr(validated, key)
         self._save_config()
 
     def delete(self, key: str) -> None:
