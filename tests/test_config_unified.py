@@ -164,21 +164,6 @@ def test_manager_refuses_to_store_secrets(tmp_path, key):
     assert not path.exists()
 
 
-def test_migrate_from_env_skips_secrets(monkeypatch, tmp_path):
-    env = tmp_path / ".env"
-    env.write_text("OPENAI_API_KEY=sk-secret123\nAI_MODEL=gpt-x\n")
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("AI_MODEL", raising=False)
-    path = tmp_path / "config.yaml"
-    mgr = cfg.ConfigManager(config_file=path)
-
-    assert mgr.migrate_from_env(env) is True
-
-    data = yaml.safe_load(path.read_text())
-    assert data["ai_model"] == "gpt-x"
-    assert "openai_api_key" not in data
-
-
 def test_cli_config_set_secret_prints_guidance(tmp_path, monkeypatch):
     from lexiflow import cli
 
@@ -410,3 +395,11 @@ def test_shell_env_beats_dotenv(monkeypatch, tmp_path):
     assert os.environ["LEXIFLOW_TEST_VAR"] == "from-shell"
     assert os.environ["LEXIFLOW_TEST_ONLY_FILE"] == "x"
     monkeypatch.delenv("LEXIFLOW_TEST_ONLY_FILE")
+
+
+def test_config_migrate_command_removed():
+    from lexiflow import cli
+
+    assert not hasattr(cli, "config_migrate_parser")
+    assert not hasattr(cli.TranscriptorCMD, "config_migrate")
+    assert not hasattr(cfg.ConfigManager, "migrate_from_env")

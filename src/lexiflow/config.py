@@ -114,49 +114,6 @@ class ConfigManager:
             del self.config_data[key.lower()]
             self._save_config()
 
-    def migrate_from_env(self, env_path: Optional[Path] = None) -> bool:
-        """Migrate configuration from .env file to config file"""
-        if env_path is None:
-            # Try to find .env in common locations
-            possible_paths = [
-                Path.cwd() / ".env",
-                Path(__file__).parent / ".env",
-                Path(__file__).parent.parent / ".env",
-            ]
-
-            for path in possible_paths:
-                if path.exists():
-                    env_path = path
-                    break
-
-        if not env_path or not env_path.exists():
-            return False
-
-        # Load .env file
-        load_dotenv(env_path, override=True)
-
-        # Map environment variables to config keys (secrets stay in env)
-        env_mapping = {
-            "AI_MODEL": "AI_MODEL",
-            "BASE_URL": "BASE_URL",
-            "NOTEBOOKLM_STORAGE_PATH": "NOTEBOOKLM_STORAGE_PATH",
-            "NOTEBOOKLM_NOTEBOOK_ID": "NOTEBOOKLM_NOTEBOOK_ID",
-            "NOTEBOOKLM_PROMPT_FILE": "NOTEBOOKLM_PROMPT_FILE",
-            "NOTEBOOKLM_METADATA_KEYS": "NOTEBOOKLM_METADATA_KEYS",
-            "NOTEBOOKLM_MAX_METADATA_TOKENS": "NOTEBOOKLM_MAX_METADATA_TOKENS",
-            "FILE_MANAGER": "FILE_MANAGER",
-            "TERMINAL": "TERMINAL",
-        }
-
-        migrated = False
-        for env_key, config_key in env_mapping.items():
-            value = os.getenv(env_key)
-            if value and not self.get(config_key):
-                self.set(config_key, value)
-                migrated = True
-
-        return migrated
-
 
 def _legacy_transcriptor_config() -> Path:
     return Path(user_config_dir(DATA_APP_NAME)) / CONFIG_FILE_NAME
@@ -236,10 +193,6 @@ migrate_legacy_configs()
 
 # Initialize config manager
 config_manager = ConfigManager()
-
-# Try to migrate from .env if config is empty
-if not config_manager.config_data:
-    config_manager.migrate_from_env()
 
 
 def ai_api_key_env_name(manager: Optional[ConfigManager] = None) -> str:

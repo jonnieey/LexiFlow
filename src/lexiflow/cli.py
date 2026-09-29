@@ -424,14 +424,6 @@ config_set_parser = config_subparsers.add_parser(
 config_set_parser.add_argument("key", help="Configuration key to set")
 config_set_parser.add_argument("value", help="Value to set")
 
-config_migrate_parser = config_subparsers.add_parser(
-    "migrate", help="migrate from .env to config file"
-)
-config_migrate_parser.add_argument(
-    "--env-file",
-    type=Path,
-    help="Path to .env file (default: auto-detect)",
-)
 
 extract_parser = base_subparsers.add_parser(
     "extract", help="extract metadata from Notice and PBS PDFs"
@@ -1734,10 +1726,7 @@ class TranscriptorCMD(cmd2.Cmd):
     def config_show(self, args: Namespace):
         config_data = config_manager.config_data
         if not config_data:
-            self.poutput("No configuration found.")
-            self.poutput(
-                "Use 'config migrate' to migrate from .env file."
-            )
+            self.poutput(f"No configuration found at {config_manager.config_file}.")
         else:
             self.poutput(f"Current configuration ({config_manager.config_file}):")
             for key, value in config_data.items():
@@ -1768,17 +1757,6 @@ class TranscriptorCMD(cmd2.Cmd):
         self.poutput(f"Set {args.key} = {_mask_secret(args.key, args.value)}")
 
     config_set_parser.set_defaults(func=config_set)
-
-    def config_migrate(self, args: Namespace):
-        if config_manager.migrate_from_env(args.env_file):
-            self.poutput("Successfully migrated configuration from .env file.")
-            self.poutput(f"Configuration saved to: {config_manager.config_file}")
-        else:
-            self.poutput(
-                "Failed to migrate configuration. .env file not found or empty."
-            )
-
-    config_migrate_parser.set_defaults(func=config_migrate)
 
     @cmd2.with_argparser(config_parser)
     def do_config(self, args: Namespace):
