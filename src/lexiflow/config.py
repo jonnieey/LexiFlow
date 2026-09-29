@@ -1,5 +1,7 @@
 import os
+import json
 import logging
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 import yaml
@@ -152,8 +154,74 @@ class ConfigManager:
         return migrated
 
 
+def _legacy_transcriptor_config() -> Path:
+    return Path(user_config_dir(DATA_APP_NAME)) / CONFIG_FILE_NAME
+
+
+def _legacy_legatoflow_config() -> Path:
+    return Path.home() / ".config" / "legatoflow" / "config"
+
+
+def migrate_legacy_configs(
+    target: Optional[Path] = None,
+    transcriptor_file: Optional[Path] = None,
+    legatoflow_file: Optional[Path] = None,
+) -> bool:
+    """One-time merge of the Transcriptor YAML and LegatoFlow JSON configs.
+
+    Only runs when the unified file does not exist yet. Secrets in the
+    LegatoFlow file are not copied; the user is told to export them.
+    Legacy files are left untouched.
+    """
+    target = Path(target or default_config_path())
+    transcriptor_file = Path(transcriptor_file or _legacy_transcriptor_config())
+    legatoflow_file = Path(legatoflow_file or _legacy_legatoflow_config())
+
+    if target.exists() and target.stat().st_size > 0:
+        return False
+    if not transcriptor_file.exists() and not legatoflow_file.exists():
+        return False
+
+    data: Dict[str, Any] = dict(DEFAULT_CONFIG)
+    skipped_secrets = []
+    try:
+        if transcriptor_file.exists():
+            with open(transcriptor_file, "r") as f:
+                data.update(yaml.safe_load(f) or {})
+        if legatoflow_file.exists():
+            with open(legatoflow_file, "r") as f:
+                for key, value in (json.load(f) or {}).items():
+                    if is_secret_key(key):
+                        skipped_secrets.append(key.upper())
+                    elif value is not None:
+                        data[key.lower()] = value
+    except (IOError, yaml.YAMLError, json.JSONDecodeError) as e:
+        logger.warning("Failed to read legacy config, skipping migration: %s", e)
+        return False
+
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "w") as f:
+            yaml.dump(data, f)
+    except IOError as e:
+        logger.error("Failed to write migrated config to %s: %s", target, e)
+        return False
+
+    print(f"LexiFlow: merged legacy config into {target}", file=sys.stderr)
+    if skipped_secrets:
+        print(
+            f"LexiFlow: API keys are no longer read from {legatoflow_file}. "
+            "Set them as environment variables instead: "
+            + ", ".join(sorted(skipped_secrets)),
+            file=sys.stderr,
+        )
+    return True
+
+
 # Load legacy .env for backward compatibility
 load_dotenv(override=True)
+
+migrate_legacy_configs()
 
 # Initialize config manager
 config_manager = ConfigManager()

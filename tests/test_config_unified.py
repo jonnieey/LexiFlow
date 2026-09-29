@@ -208,3 +208,90 @@ def test_cli_config_show_lists_secret_env_vars_masked(tmp_path, monkeypatch):
     assert "OPENAI_API_KEY: sk-a" in text
     assert "sk-abcdefghijkl" not in text
     assert "REVAI_API_KEY: (not set)" in text
+
+
+# --- legacy migration ----------------------------------------------------
+
+import json  # noqa: E402
+
+
+def _legacy(tmp_path, transcriptor=None, legatoflow=None):
+    t = tmp_path / "transcriptor" / "config.yaml"
+    l = tmp_path / "legatoflow" / "config"
+    if transcriptor is not None:
+        t.parent.mkdir(parents=True)
+        t.write_text(yaml.dump(transcriptor))
+    if legatoflow is not None:
+        l.parent.mkdir(parents=True)
+        l.write_text(json.dumps(legatoflow))
+    return t, l
+
+
+def test_migrate_merges_both_legacy_files(tmp_path):
+    t, l = _legacy(
+        tmp_path,
+        transcriptor={
+            "base_dir": "/data",
+            "date_format": "%d/%m/%Y",
+            "invoice_theme": "nord",
+        },
+        legatoflow={"AI_MODEL": "gpt-x", "TERMINAL": "kitty -e"},
+    )
+    target = tmp_path / "lexiflow" / "config.yaml"
+
+    assert cfg.migrate_legacy_configs(target, t, l) is True
+
+    loaded = Config.from_yaml(target)
+    assert loaded.base_dir == "/data"
+    assert loaded.invoice_theme == "nord"
+    assert loaded.ai_model == "gpt-x"
+    assert loaded.terminal == "kitty -e"
+
+
+def test_migrate_skips_secrets_and_warns(tmp_path, capsys):
+    t, l = _legacy(
+        tmp_path,
+        legatoflow={"OPENAI_API_KEY": "sk-secret", "REVAI_API_KEY": "rv"},
+    )
+    target = tmp_path / "lexiflow" / "config.yaml"
+
+    cfg.migrate_legacy_configs(target, t, l)
+
+    raw = target.read_text()
+    assert "sk-secret" not in raw
+    assert "openai_api_key" not in raw.lower()
+    err = capsys.readouterr().err
+    assert "OPENAI_API_KEY" in err and "REVAI_API_KEY" in err
+    assert "sk-secret" not in err
+    # base_dir etc. seeded from defaults so the file is loadable
+    assert Config.from_yaml(target).base_dir == cfg.DEFAULT_CONFIG["base_dir"]
+
+
+def test_migrate_noop_when_target_exists(tmp_path):
+    t, l = _legacy(tmp_path, legatoflow={"AI_MODEL": "gpt-x"})
+    target = tmp_path / "lexiflow" / "config.yaml"
+    target.parent.mkdir(parents=True)
+    target.write_text(yaml.dump({**cfg.DEFAULT_CONFIG, "ai_model": "keep"}))
+
+    assert cfg.migrate_legacy_configs(target, t, l) is False
+    assert Config.from_yaml(target).ai_model == "keep"
+
+
+def test_migrate_noop_without_legacy_files(tmp_path):
+    t, l = _legacy(tmp_path)
+    target = tmp_path / "lexiflow" / "config.yaml"
+
+    assert cfg.migrate_legacy_configs(target, t, l) is False
+    assert not target.exists()
+
+
+def test_migrate_leaves_legacy_files_in_place(tmp_path):
+    t, l = _legacy(
+        tmp_path,
+        transcriptor={"base_dir": "/d", "date_format": "%Y", "invoice_theme": "x"},
+        legatoflow={"AI_MODEL": "gpt-x"},
+    )
+
+    cfg.migrate_legacy_configs(tmp_path / "lexiflow" / "config.yaml", t, l)
+
+    assert t.exists() and l.exists()
