@@ -199,6 +199,39 @@ def test_do_update_config(cli_app, mock_transcriptor):
     mock_transcriptor.return_value.save_config.assert_called_once()
 
 
+def test_do_update_config_pdf_backend_persists_and_applies(
+    cli_app, mock_transcriptor
+):
+    from lexiflow.pdf import PDFRenderer
+
+    backend = PDFRenderer.available_backends()[0]
+    with patch.object(PDFRenderer, "_default_backend", None):
+        result = cli_app.onecmd(f"update config --pdf-backend {backend}")
+        assert PDFRenderer.get_default_backend() == backend
+    assert result is False
+    assert mock_transcriptor.return_value.config.pdf_backend == backend
+    mock_transcriptor.return_value.save_config.assert_called_once()
+    assert f"[{backend}]" in cli_app.prompt
+
+
+def test_do_update_config_pdf_backend_auto(cli_app, mock_transcriptor):
+    from lexiflow.pdf import PDFRenderer
+
+    with patch.object(PDFRenderer, "_default_backend", "xhtml2pdf"):
+        cli_app.onecmd("update config --pdf-backend auto")
+        assert PDFRenderer.get_default_backend() is None
+    assert mock_transcriptor.return_value.config.pdf_backend == "auto"
+
+
+def test_do_update_config_pdf_backend_rejects_unknown(cli_app, mock_transcriptor):
+    import cmd2
+
+    with pytest.raises(cmd2.exceptions.Cmd2ArgparseError):
+        cli_app.onecmd("update config --pdf-backend bogus")
+    assert mock_transcriptor.return_value.config.pdf_backend == "auto"
+    mock_transcriptor.return_value.save_config.assert_not_called()
+
+
 def test_do_update_profile(cli_app, mock_transcriptor):
     """Test 'update profile' command"""
     result = cli_app.onecmd("update profile --name 'Test User'")

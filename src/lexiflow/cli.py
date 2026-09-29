@@ -171,6 +171,12 @@ update_config_parser.add_argument(
 update_config_parser.add_argument(
     "--currency-send-country", help="sendwave sendCountryIso2"
 )
+update_config_parser.add_argument(
+    "-p",
+    "--pdf-backend",
+    choices=["auto", *PDFRenderer.available_backends()],
+    help="PDF rendering backend (saved to config)",
+)
 
 update_profile_parser = update_subparsers.add_parser(
     "profile", help="update profile"
@@ -837,6 +843,10 @@ class TranscriptorCMD(cmd2.Cmd):
 
         if args.currency_send_country:
             config.currency_send_country = args.currency_send_country
+
+        if args.pdf_backend:
+            config.pdf_backend = args.pdf_backend
+            self.pdf_backend = args.pdf_backend
 
         self.app.config = config
 
