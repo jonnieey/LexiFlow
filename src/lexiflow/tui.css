@@ -271,7 +271,7 @@ ModalScreen {
     height: 100%;
     border: double $accent;
     background: $surface;
-    padding: 1;
+    padding: 0 1;
     layout: vertical;
 }
 #add-job-step-info {
@@ -282,21 +282,29 @@ ModalScreen {
 }
 #add-job-form {
     height: 1fr;
-    border: double $accent;
-    margin: 1;
-    padding: 1;
+    border: round $panel;
+    margin: 0;
+    padding: 0 1;
     overflow-y: auto;
 }
-#add-job-form Input,
-#add-job-form Select,
-#add-job-form TextArea,
-#add-job-form Checkbox {
+#add-job-form > Input,
+#add-job-form > Select,
+#add-job-form > TextArea,
+#add-job-form > Checkbox {
     margin-bottom: 1;
     width: 100%;
     height: auto;
 }
-#add-job-form Label {
-    margin-top: 1;
+#add-job-form > Checkbox {
+    border: none;
+    height: 1;
+    margin-bottom: 0;
+}
+#add-job-form > TextArea {
+    height: 4;
+}
+#add-job-form > Label {
+    margin-top: 0;
     margin-bottom: 0;
     color: cyan;
 }

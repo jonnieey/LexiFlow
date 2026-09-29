@@ -1937,8 +1937,8 @@ class AddJobScreen(VimModalMixin, ModalScreen):
 
         form = self.query_one("#add-job-form", Container)
         form.mount(
-            Container(
-                Label("Job File Path:"),
+            field_row(
+                "Job File Path:",
                 Input(
                     placeholder="Enter path to job file or folder",
                     id="job-file-path",
@@ -1978,24 +1978,38 @@ class AddJobScreen(VimModalMixin, ModalScreen):
 
         form = self.query_one("#add-job-form", Container)
         form.mount(
-            Label("Client:"),
-            Select(
-                client_options, id="client-select", prompt="Select a client"
+            field_row(
+                "Client:",
+                Select(
+                    client_options,
+                    id="client-select",
+                    prompt="Select a client",
+                ),
             ),
-            Label("Job Number:"),
-            Input(
-                value=job_number,
-                id="job-number",
-                placeholder="Auto-extracted or enter manually",
+            field_row(
+                "Job Number:",
+                Input(
+                    value=job_number,
+                    id="job-number",
+                    placeholder="Auto-extracted or enter manually",
+                ),
             ),
-            Label("Date Received:"),
-            Input(value=today, id="date-received", placeholder=date_format),
-            Label("Date Due:"),
-            Input(value=date_due, id="date-due", placeholder=date_format),
+            field_row(
+                "Date Received:",
+                Input(
+                    value=today, id="date-received", placeholder=date_format
+                ),
+            ),
+            field_row(
+                "Date Due:",
+                Input(value=date_due, id="date-due", placeholder=date_format),
+            ),
         )
 
         self.update_button_states()
-        self.query_one("#client-select", Select).focus()
+        self.call_after_refresh(
+            lambda: self.query_one("#client-select", Select).focus()
+        )
         self.refresh(layout=True)
 
     def load_step_3(self):
@@ -2128,26 +2142,32 @@ class AddJobScreen(VimModalMixin, ModalScreen):
                 value=True,
                 id=f"process-file{media_suffix}",
             ),
-            Label("Job Type:"),
-            Select(
-                [
-                    ("Normal", "normal"),
-                    ("Expedite", "expedite"),
-                    ("Interpreted", "interpreted"),
-                ],
-                value="normal",
-                id=f"job-type{media_suffix}",
+            field_row(
+                "Job Type:",
+                Select(
+                    [
+                        ("Normal", "normal"),
+                        ("Expedite", "expedite"),
+                        ("Interpreted", "interpreted"),
+                    ],
+                    value="normal",
+                    id=f"job-type{media_suffix}",
+                ),
             ),
-            Label("Quantity (minutes):"),
-            Input(value=f"{duration:.2f}", id=f"quantity{media_suffix}"),
-            Label("Template:"),
-            Select(
-                [
-                    (v.replace(".docx", ""), k)
-                    for k, v in TEMPLATE_MAPPING.items()
-                ],
-                value="zd",
-                id=f"job-template{media_suffix}",
+            field_row(
+                "Quantity (min):",
+                Input(value=f"{duration:.2f}", id=f"quantity{media_suffix}"),
+            ),
+            field_row(
+                "Template:",
+                Select(
+                    [
+                        (v.replace(".docx", ""), k)
+                        for k, v in TEMPLATE_MAPPING.items()
+                    ],
+                    value="zd",
+                    id=f"job-template{media_suffix}",
+                ),
             ),
             Label("Note:"),
             TextArea(

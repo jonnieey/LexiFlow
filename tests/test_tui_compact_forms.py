@@ -13,6 +13,7 @@ import lexiflow.base as base_module
 import lexiflow.tui as tui_module
 from lexiflow.tui import (
     AddClientScreen,
+    AddJobScreen,
     AddCutoffsScreen,
     ClientEditScreen,
     ProfileEditScreen,
@@ -125,5 +126,43 @@ def test_simple_forms_shrink_to_content_and_center(isolated_app, make_screen):
             left = box.region.x
             right = screen.region.right - box.region.right
             assert abs(left - right) <= 1
+
+    asyncio.run(_run())
+
+
+def _add_job_step(screen, step, tmp_path, monkeypatch):
+    if step == 1:
+        screen.load_step_1()
+    elif step == 2:
+        screen.job_data = {"job_file": str(tmp_path / "123_0915.zip")}
+        screen.load_step_2()
+    else:
+        media = tmp_path / "audio.mp3"
+        media.write_bytes(b"")
+        monkeypatch.setattr(tui_module, "get_media_duration", lambda _: 1.5)
+        screen.media_files = [media]
+        screen.current_media_index = 0
+        screen.load_current_media_form()
+
+
+@pytest.mark.parametrize("step", [1, 2, 3])
+def test_add_job_steps_use_compact_rows(
+    isolated_app, tmp_path, monkeypatch, step
+):
+    async def _run():
+        async with isolated_app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            screen = AddJobScreen()
+            isolated_app.push_screen(screen)
+            await pilot.pause()
+            _add_job_step(screen, step, tmp_path, monkeypatch)
+            await pilot.pause()
+            form = screen.query_one("#add-job-form")
+            fields = list(form.query("Input, Select, Checkbox"))
+            assert fields
+            for widget in fields:
+                if isinstance(widget, (Input, Select)):
+                    assert "field-row" in widget.parent.classes, widget.id
+            assert form.max_scroll_y == 0
 
     asyncio.run(_run())
