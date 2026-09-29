@@ -271,6 +271,19 @@ class Config(YAMLBase):
     currency_receive_country: str = ""
     currency_send_country: str = "us"
     invoice_currency: str = "USD"
+    # PDF rendering backend ("auto" = first available)
+    pdf_backend: str = "auto"
+    # LegatoFlow settings (secrets such as API keys come from env vars only).
+    # None = unset in file; Settings falls back to env var, then its default.
+    ai_model: Optional[str] = None
+    base_url: Optional[str] = None
+    notebooklm_storage_path: Optional[str] = None
+    notebooklm_notebook_id: Optional[str] = None
+    notebooklm_prompt_file: Optional[str] = None
+    notebooklm_metadata_keys: Optional[str] = None
+    notebooklm_max_metadata_tokens: Optional[int] = None
+    file_manager: str = ""
+    terminal: str = ""
 
 
 class Profile(YAMLBase):
