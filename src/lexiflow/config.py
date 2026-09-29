@@ -27,6 +27,14 @@ DEFAULT_CONFIG = {
 }
 
 
+# Secrets are read from environment variables only, never from the file.
+SECRET_KEYS = frozenset({"OPENAI_API_KEY", "SPEECHMATIX_API_KEY", "REVAI_API_KEY"})
+
+
+def is_secret_key(key: str) -> bool:
+    return key.upper() in SECRET_KEYS
+
+
 def default_config_path() -> Path:
     """Path of the single unified config file."""
     return Path(user_config_dir(CONFIG_APP_NAME)) / CONFIG_FILE_NAME
@@ -83,6 +91,12 @@ class ConfigManager:
 
     def set(self, key: str, value: Any) -> None:
         """Set a configuration value"""
+        if is_secret_key(key):
+            raise ValueError(
+                f"{key.upper()} is a secret; set it as an environment "
+                f"variable (export {key.upper()}=...) instead of in the "
+                "config file."
+            )
         self._reload_for_write()
         self.config_data[key.lower()] = value
         self._save_config()
@@ -115,13 +129,10 @@ class ConfigManager:
         # Load .env file
         load_dotenv(env_path, override=True)
 
-        # Map environment variables to config keys
+        # Map environment variables to config keys (secrets stay in env)
         env_mapping = {
-            "OPENAI_API_KEY": "OPENAI_API_KEY",
             "AI_MODEL": "AI_MODEL",
             "BASE_URL": "BASE_URL",
-            "SPEECHMATIX_API_KEY": "SPEECHMATIX_API_KEY",
-            "REVAI_API_KEY": "REVAI_API_KEY",
             "NOTEBOOKLM_STORAGE_PATH": "NOTEBOOKLM_STORAGE_PATH",
             "NOTEBOOKLM_NOTEBOOK_ID": "NOTEBOOKLM_NOTEBOOK_ID",
             "NOTEBOOKLM_PROMPT_FILE": "NOTEBOOKLM_PROMPT_FILE",
@@ -154,12 +165,13 @@ if not config_manager.config_data:
 
 @dataclass
 class Settings:
-    """Settings dataclass that reads from both environment and config file"""
+    """Settings from the config file and environment.
+
+    Secrets (``SECRET_KEYS``) come from environment variables only.
+    """
 
     OPENAI_API_KEY: str = field(
-        default_factory=lambda: (
-            config_manager.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY", "")
-        )
+        default_factory=lambda: os.getenv("OPENAI_API_KEY") or ""
     )
     AI_MODEL: str = field(
         default_factory=lambda: (
@@ -172,15 +184,10 @@ class Settings:
         )
     )
     SPEECHMATIX_API_KEY: str | None = field(
-        default_factory=lambda: (
-            config_manager.get("SPEECHMATIX_API_KEY")
-            or os.getenv("SPEECHMATIX_API_KEY", None)
-        )
+        default_factory=lambda: os.getenv("SPEECHMATIX_API_KEY")
     )
     REVAI_API_KEY: str | None = field(
-        default_factory=lambda: (
-            config_manager.get("REVAI_API_KEY") or os.getenv("REVAI_API_KEY", None)
-        )
+        default_factory=lambda: os.getenv("REVAI_API_KEY")
     )
     NOTEBOOKLM_STORAGE_PATH: str | None = field(
         default_factory=lambda: (

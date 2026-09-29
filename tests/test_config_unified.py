@@ -122,3 +122,89 @@ def test_manager_does_not_create_file_on_init(tmp_path):
     cfg.ConfigManager(config_file=path)
 
     assert not Path(path).exists()
+
+
+# --- env-only secrets ----------------------------------------------------
+
+import pytest  # noqa: E402
+
+SECRETS = ["OPENAI_API_KEY", "SPEECHMATIX_API_KEY", "REVAI_API_KEY"]
+
+
+@pytest.mark.parametrize("key", SECRETS)
+def test_settings_ignore_secret_in_config_file(monkeypatch, key):
+    monkeypatch.setattr(cfg.config_manager, "get", lambda *a, **k: "from-file")
+    monkeypatch.delenv(key, raising=False)
+
+    assert not getattr(cfg.Settings(), key)
+
+
+@pytest.mark.parametrize("key", SECRETS)
+def test_settings_read_secret_from_env(monkeypatch, key):
+    monkeypatch.setattr(cfg.config_manager, "get", lambda *a, **k: "from-file")
+    monkeypatch.setenv(key, "from-env")
+
+    assert getattr(cfg.Settings(), key) == "from-env"
+
+
+@pytest.mark.parametrize("key", SECRETS + ["openai_api_key"])
+def test_manager_refuses_to_store_secrets(tmp_path, key):
+    path = tmp_path / "config.yaml"
+    mgr = cfg.ConfigManager(config_file=path)
+
+    with pytest.raises(ValueError, match="environment variable"):
+        mgr.set(key, "sk-123456789")
+
+    assert not path.exists()
+
+
+def test_migrate_from_env_skips_secrets(monkeypatch, tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("OPENAI_API_KEY=sk-secret123\nAI_MODEL=gpt-x\n")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("AI_MODEL", raising=False)
+    path = tmp_path / "config.yaml"
+    mgr = cfg.ConfigManager(config_file=path)
+
+    assert mgr.migrate_from_env(env) is True
+
+    data = yaml.safe_load(path.read_text())
+    assert data["ai_model"] == "gpt-x"
+    assert "openai_api_key" not in data
+
+
+def test_cli_config_set_secret_prints_guidance(tmp_path, monkeypatch):
+    from lexiflow import cli
+
+    mgr = cfg.ConfigManager(config_file=tmp_path / "config.yaml")
+    monkeypatch.setattr(cli, "config_manager", mgr)
+    out = []
+    fake = type("F", (), {"poutput": lambda self, m: out.append(m)})()
+
+    cli.TranscriptorCMD.config_set(
+        fake, type("A", (), {"key": "OPENAI_API_KEY", "value": "sk-1"})()
+    )
+
+    text = "\n".join(out)
+    assert "export OPENAI_API_KEY=" in text
+    assert "sk-1" not in text
+
+
+def test_cli_config_show_lists_secret_env_vars_masked(tmp_path, monkeypatch):
+    from lexiflow import cli
+
+    mgr = cfg.ConfigManager(config_file=tmp_path / "config.yaml")
+    mgr.set("AI_MODEL", "gpt-x")
+    monkeypatch.setattr(cli, "config_manager", mgr)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-abcdefghijkl")
+    monkeypatch.delenv("REVAI_API_KEY", raising=False)
+    out = []
+    fake = type("F", (), {"poutput": lambda self, m: out.append(m)})()
+
+    cli.TranscriptorCMD.config_show(fake, None)
+
+    text = "\n".join(out)
+    assert "ai_model: gpt-x" in text
+    assert "OPENAI_API_KEY: sk-a" in text
+    assert "sk-abcdefghijkl" not in text
+    assert "REVAI_API_KEY: (not set)" in text

@@ -14,7 +14,7 @@ from prompt_toolkit import prompt
 from prompt_toolkit.styles import Style
 
 from lexiflow.base import Transcriptor
-from lexiflow.config import config_manager
+from lexiflow.config import SECRET_KEYS, config_manager
 from lexiflow.extractor import MetadataExtractor, fill_template
 from lexiflow.input_handler import CLIInputHandler
 from lexiflow.pdf import PDFRenderer
@@ -1720,16 +1720,25 @@ class TranscriptorCMD(cmd2.Cmd):
             self.poutput(
                 "Use 'config migrate' to migrate from .env file."
             )
-            return
+        else:
+            self.poutput(f"Current configuration ({config_manager.config_file}):")
+            for key, value in config_data.items():
+                self.poutput(f"  {key}: {_mask_secret(key, value)}")
 
-        self.poutput("Current configuration:")
-        for key, value in config_data.items():
-            self.poutput(f"  {key}: {_mask_secret(key, value)}")
+        self.poutput("Secrets (environment variables):")
+        for key in sorted(SECRET_KEYS):
+            value = os.getenv(key)
+            shown = _mask_secret(key, value) if value else "(not set)"
+            self.poutput(f"  {key}: {shown}")
 
     config_show_parser.set_defaults(func=config_show)
 
     def config_set(self, args: Namespace):
-        config_manager.set(args.key, args.value)
+        try:
+            config_manager.set(args.key, args.value)
+        except ValueError as e:
+            self.poutput(str(e))
+            return
         self.poutput(f"Set {args.key} = {_mask_secret(args.key, args.value)}")
 
     config_set_parser.set_defaults(func=config_set)
