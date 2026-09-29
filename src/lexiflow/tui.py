@@ -3495,70 +3495,74 @@ class ConfigurationScreen(VimModalMixin, ModalScreen):
             yield Label("Edit Configuration", classes="config-title")
 
             with VerticalScroll(id="config-form"):
-                yield Label("Base Directory:")
-                yield Input(
-                    value=self.app.transcriptor.config.base_dir, id="base_dir"
-                )
-
-                yield Label("Date Format:")
-                yield Input(
-                    value=self.app.transcriptor.config.date_format,
-                    id="date_format",
-                )
-
-                yield Label("Invoice Theme:")
-                # Fix: Import invoice_template_themes at the top
-                themes = invoice_template_themes()
-                select = Select(
-                    [(theme, theme) for theme in themes],
-                    id="invoice_theme",
-                    value=self.app.transcriptor.config.invoice_theme,
-                )
-                yield select
-
                 config = self.app.transcriptor.config
+                yield field_row(
+                    "Base Directory:",
+                    Input(value=config.base_dir, id="base_dir"),
+                )
+                yield field_row(
+                    "Date Format:",
+                    Input(value=config.date_format, id="date_format"),
+                )
+
+                themes = invoice_template_themes()
+                yield field_row(
+                    "Invoice Theme:",
+                    Select(
+                        [(theme, theme) for theme in themes],
+                        id="invoice_theme",
+                        value=config.invoice_theme,
+                    ),
+                )
+
                 currencies = sorted(
                     set(CURRENCY_SYMBOLS.keys())
                     | {config.display_currency, config.invoice_currency}
                 )
-                yield Label("Display Currency:")
-                yield Select(
-                    [(code, code) for code in currencies],
-                    id="display_currency",
-                    value=config.display_currency,
+                yield field_row(
+                    "Display Currency:",
+                    Select(
+                        [(code, code) for code in currencies],
+                        id="display_currency",
+                        value=config.display_currency,
+                    ),
+                )
+                yield field_row(
+                    "Invoice Currency:",
+                    Select(
+                        [(code, code) for code in currencies],
+                        id="invoice_currency",
+                        value=config.invoice_currency,
+                    ),
+                )
+                yield field_row(
+                    "FX Rate (0=auto):",
+                    Input(
+                        value=str(config.conversion_rate),
+                        id="conversion_rate",
+                    ),
                 )
 
-                yield Label("Invoice Currency:")
-                yield Select(
-                    [(code, code) for code in currencies],
-                    id="invoice_currency",
-                    value=config.invoice_currency,
-                )
-
-                yield Label("Manual Conversion Rate (0 = auto):")
-                yield Input(
-                    value=str(config.conversion_rate),
-                    id="conversion_rate",
-                )
-
-                yield Label("PDF Backend:")
                 installed = PDFRenderer.available_backends()
                 backends = ["auto", *BACKEND_PRIORITY]
                 if config.pdf_backend not in backends:
                     backends.append(config.pdf_backend)
-                yield Select(
-                    [
-                        (
-                            name
-                            if name == "auto" or name in installed
-                            else f"{name} (not installed)",
-                            name,
-                        )
-                        for name in backends
-                    ],
-                    id="pdf_backend",
-                    value=config.pdf_backend,
-                    allow_blank=False,
+                yield field_row(
+                    "PDF Backend:",
+                    Select(
+                        [
+                            (
+                                name
+                                if name == "auto" or name in installed
+                                else f"{name} (not installed)",
+                                name,
+                            )
+                            for name in backends
+                        ],
+                        id="pdf_backend",
+                        value=config.pdf_backend,
+                        allow_blank=False,
+                    ),
                 )
 
             with Horizontal(id="edit-buttons"):

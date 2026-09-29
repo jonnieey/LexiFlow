@@ -464,7 +464,7 @@ Button.-error {
     margin: 0 0 0 0;
 }
 .field-row > Label {
-    width: 16;
+    width: 18;
     color: $accent;
 }
 .field-row > Input,

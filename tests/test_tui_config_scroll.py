@@ -1,4 +1,4 @@
-"""Edit Configuration modal must scroll so every field is reachable.
+"""Edit Configuration modal must show every field on a small terminal.
 
 Isolation as in test_tui_navigation.py (HOME/XDG + DEFAULT_CONFIG base_dir).
 """
@@ -24,7 +24,7 @@ def isolated_app(tmp_path, monkeypatch):
     return TranscriptorTUI()
 
 
-def test_config_form_scrolls_to_last_field(isolated_app):
+def test_config_form_fits_without_scrolling(isolated_app):
     async def _run():
         async with isolated_app.run_test(size=(80, 24)) as pilot:
             await pilot.pause()
@@ -33,14 +33,9 @@ def test_config_form_scrolls_to_last_field(isolated_app):
             screen = isolated_app.screen
 
             form = screen.query_one("#config-form", VerticalScroll)
-            assert form.max_scroll_y > 0  # content taller than the modal
+            assert form.max_scroll_y == 0
 
             last = screen.query_one("#pdf_backend", Select)
-            last.focus()
-            await pilot.pause()
-            await pilot.pause()
-
-            assert form.scroll_y > 0
             assert form.region.contains_region(last.region)
             # Save/Cancel stay visible, docked below the form
             save = screen.query_one("#save-config")
