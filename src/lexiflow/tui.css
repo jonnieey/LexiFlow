@@ -165,6 +165,9 @@ Button.-error {
 #invoice-cutoffs-table .datatable--odd-row  { background: $surface; }
 
 /* Modal screens */
+ModalScreen {
+    align: center middle;
+}
 #invoice-preview, #job-edit, #config-edit,
 #client-edit, #rate-edit, #profile-edit, #context-menu,
 #document-processing-screen {
@@ -314,7 +317,7 @@ Button.-error {
 #confirm-delete:hover {
     background: $error-darken-1;
 }
-#restore-screen, #purge-screen, #about-screen, #add-cutoffs {
+#restore-screen, #purge-screen, #about-screen, #add-cutoffs, #add-client {
     width: 60%;
     height: auto;
     border: double $accent;
@@ -322,26 +325,38 @@ Button.-error {
     padding: 1;
     align: center middle;
 }
-#restore-buttons, #purge-buttons, #about-buttons, #add-cutoffs-buttons {
+#restore-buttons, #purge-buttons, #about-buttons, #add-cutoffs-buttons,
+#add-buttons {
     margin-top: 1;
     align: center middle;
     width: 100%;
 }
+#add-buttons {
+    height: auto;
+}
 #restore-buttons > Button,
 #purge-buttons > Button,
 #about-buttons > Button,
-#add-cutoffs-buttons > Button {
+#add-cutoffs-buttons > Button,
+#add-buttons > Button {
     margin: 0 1;
 }
-#add-cutoffs-form-container {
+/* Short edit/add forms shrink to their content (the base screens wrap
+   fields in a Vertical, which would otherwise fill the box). */
+#client-form-container, #rate-form-container, #profile-form-container,
+#add-client-form-container, #add-cutoffs-form-container {
     height: auto;
-    max-height: 70%;
+    max-height: 1fr;
     margin-bottom: 1;
 }
-#client-form-container, #rate-form-container, #profile-form-container {
+#client-form-container > Vertical, #rate-form-container > Vertical,
+#profile-form-container > Vertical, #add-client-form-container > Vertical,
+#add-cutoffs-form-container > Vertical {
     height: auto;
-    max-height: 80%;
-    margin-bottom: 1;
+}
+#client-edit #edit-buttons, #rate-edit #edit-buttons,
+#profile-edit #edit-buttons {
+    dock: none;
 }
 #action-list {
     margin: 1;
@@ -502,3 +517,4 @@ Button.-error {
     border: none;
     height: 1;
 }
+

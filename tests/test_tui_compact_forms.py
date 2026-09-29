@@ -102,3 +102,28 @@ def test_simple_forms_use_compact_rows(isolated_app, make_screen):
                 assert screen.region.contains_region(widget.region)
 
     asyncio.run(_run())
+
+
+@pytest.mark.parametrize(
+    "make_screen",
+    SIMPLE_FORMS,
+    ids=["client-edit", "client-add", "rate-edit", "profile-edit", "cutoffs"],
+)
+def test_simple_forms_shrink_to_content_and_center(isolated_app, make_screen):
+    async def _run():
+        async with isolated_app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            isolated_app.push_screen(make_screen())
+            await pilot.pause()
+            screen = isolated_app.screen
+            box = screen.query_one(f"#{make_screen().get_container_id()}")
+            last_input = list(screen.query(Input))[-1]
+            save = screen.query_one("#save")
+            # no dead space between the last field and the buttons
+            assert save.region.y - last_input.region.bottom <= 2
+            # centered on screen
+            left = box.region.x
+            right = screen.region.right - box.region.right
+            assert abs(left - right) <= 1
+
+    asyncio.run(_run())
