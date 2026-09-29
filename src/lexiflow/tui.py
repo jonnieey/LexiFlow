@@ -3487,7 +3487,7 @@ class ConfigurationScreen(VimModalMixin, ModalScreen):
         with Container(id="config-edit"):
             yield Label("Edit Configuration", classes="config-title")
 
-            with Vertical():
+            with VerticalScroll(id="config-form"):
                 yield Label("Base Directory:")
                 yield Input(
                     value=self.app.transcriptor.config.base_dir, id="base_dir"

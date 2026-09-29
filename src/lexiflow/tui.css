@@ -217,6 +217,9 @@ Button.-error {
     width: 90%;
     height: 90%;
 }
+#config-form {
+    height: 1fr;
+}
 #invoice-markdown {
     height: 1fr;
     border: solid $panel;
