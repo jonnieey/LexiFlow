@@ -32,6 +32,7 @@ from textual.widgets import (
 
 from lexiflow.base import Transcriptor
 from lexiflow.extractor import MetadataExtractor, fill_template
+from lexiflow.pdf import PDFRenderer
 from lexiflow.utils import (
     TEMPLATE_MAPPING,
     extract_date_due,
@@ -3533,6 +3534,17 @@ class ConfigurationScreen(VimModalMixin, ModalScreen):
                     id="conversion_rate",
                 )
 
+                yield Label("PDF Backend:")
+                backends = ["auto", *PDFRenderer.available_backends()]
+                if config.pdf_backend not in backends:
+                    backends.append(config.pdf_backend)
+                yield Select(
+                    [(name, name) for name in backends],
+                    id="pdf_backend",
+                    value=config.pdf_backend,
+                    allow_blank=False,
+                )
+
             with Horizontal(id="edit-buttons"):
                 yield Button("Save", variant="primary", id="save-config")
                 yield Button("Cancel", variant="default", id="cancel-config")
@@ -3567,6 +3579,13 @@ class ConfigurationScreen(VimModalMixin, ModalScreen):
             )
         except ValueError:
             self.app.transcriptor.config.conversion_rate = 0.0
+
+        pdf_backend = self.query_one("#pdf_backend", Select).value or "auto"
+        self.app.transcriptor.config.pdf_backend = pdf_backend
+        if pdf_backend == "auto":
+            PDFRenderer._default_backend = None
+        elif pdf_backend in PDFRenderer.available_backends():
+            PDFRenderer.set_default_backend(pdf_backend)
 
         # Save to file
         self.app.transcriptor.save_config()
@@ -3635,6 +3654,7 @@ Invoice Theme: {config.invoice_theme}
 Display Currency: {config.display_currency}
 Invoice Currency: {config.invoice_currency}
 Conversion Rate: {config.conversion_rate}
+PDF Backend: {config.pdf_backend}
         """
         config_display.update(display_text)
 
