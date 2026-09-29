@@ -14,7 +14,12 @@ from prompt_toolkit import prompt
 from prompt_toolkit.styles import Style
 
 from lexiflow.base import Transcriptor
-from lexiflow.config import SECRET_KEYS, config_manager
+from lexiflow.config import (
+    DEFAULT_AI_API_KEY_ENV,
+    SECRET_KEYS,
+    ai_api_key_env_name,
+    config_manager,
+)
 from lexiflow.extractor import MetadataExtractor, fill_template
 from lexiflow.input_handler import CLIInputHandler
 from lexiflow.pdf import BACKEND_PRIORITY, PDFRenderer, not_installed_message
@@ -1738,11 +1743,15 @@ class TranscriptorCMD(cmd2.Cmd):
             for key, value in config_data.items():
                 self.poutput(f"  {key}: {_mask_secret(key, value)}")
 
+        def _shown(name: str) -> str:
+            value = os.getenv(name)
+            return _mask_secret(name, value) if value else "(not set)"
+
+        ai_key_env = ai_api_key_env_name(config_manager)
         self.poutput("Secrets (environment variables):")
-        for key in sorted(SECRET_KEYS):
-            value = os.getenv(key)
-            shown = _mask_secret(key, value) if value else "(not set)"
-            self.poutput(f"  {key}: {shown}")
+        self.poutput(f"  AI key: {ai_key_env} (ai_api_key_env): {_shown(ai_key_env)}")
+        for key in sorted(SECRET_KEYS - {DEFAULT_AI_API_KEY_ENV}):
+            self.poutput(f"  {key}: {_shown(key)}")
 
     config_show_parser.set_defaults(func=config_show)
 

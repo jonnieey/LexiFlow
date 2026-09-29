@@ -33,8 +33,12 @@ DEFAULT_CONFIG = {
 SECRET_KEYS = frozenset({"OPENAI_API_KEY", "SPEECHMATIX_API_KEY", "REVAI_API_KEY"})
 
 
+DEFAULT_AI_API_KEY_ENV = "OPENAI_API_KEY"
+
+
 def is_secret_key(key: str) -> bool:
-    return key.upper() in SECRET_KEYS
+    key = key.upper()
+    return key in SECRET_KEYS or key.endswith("_API_KEY")
 
 
 def default_config_path() -> Path:
@@ -231,6 +235,15 @@ if not config_manager.config_data:
     config_manager.migrate_from_env()
 
 
+def ai_api_key_env_name(manager: Optional[ConfigManager] = None) -> str:
+    """Env var the AI API key is read from (config > env > default)."""
+    return (
+        (manager or config_manager).get("AI_API_KEY_ENV")
+        or os.getenv("AI_API_KEY_ENV")
+        or DEFAULT_AI_API_KEY_ENV
+    )
+
+
 @dataclass
 class Settings:
     """Settings from the config file and environment.
@@ -238,8 +251,11 @@ class Settings:
     Secrets (``SECRET_KEYS``) come from environment variables only.
     """
 
+    # Name of the env var holding the AI key (e.g. DEEPSEEK_API_KEY when
+    # BASE_URL points at DeepSeek). OPENAI_API_KEY holds its value.
+    AI_API_KEY_ENV: str = field(default_factory=lambda: ai_api_key_env_name())
     OPENAI_API_KEY: str = field(
-        default_factory=lambda: os.getenv("OPENAI_API_KEY") or ""
+        default_factory=lambda: os.getenv(ai_api_key_env_name()) or ""
     )
     AI_MODEL: str = field(
         default_factory=lambda: (

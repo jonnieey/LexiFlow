@@ -140,9 +140,14 @@ def test_settings_ignore_secret_in_config_file(monkeypatch, key):
     assert not getattr(cfg.Settings(), key)
 
 
+def _file_values_except_key_env(k, d=None):
+    return None if k.lower() == "ai_api_key_env" else "from-file"
+
+
 @pytest.mark.parametrize("key", SECRETS)
 def test_settings_read_secret_from_env(monkeypatch, key):
-    monkeypatch.setattr(cfg.config_manager, "get", lambda *a, **k: "from-file")
+    monkeypatch.setattr(cfg.config_manager, "get", _file_values_except_key_env)
+    monkeypatch.delenv("AI_API_KEY_ENV", raising=False)
     monkeypatch.setenv(key, "from-env")
 
     assert getattr(cfg.Settings(), key) == "from-env"
@@ -198,6 +203,7 @@ def test_cli_config_show_lists_secret_env_vars_masked(tmp_path, monkeypatch):
     mgr.set("AI_MODEL", "gpt-x")
     monkeypatch.setattr(cli, "config_manager", mgr)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-abcdefghijkl")
+    monkeypatch.delenv("AI_API_KEY_ENV", raising=False)
     monkeypatch.delenv("REVAI_API_KEY", raising=False)
     out = []
     fake = type("F", (), {"poutput": lambda self, m: out.append(m)})()
@@ -206,7 +212,7 @@ def test_cli_config_show_lists_secret_env_vars_masked(tmp_path, monkeypatch):
 
     text = "\n".join(out)
     assert "ai_model: gpt-x" in text
-    assert "OPENAI_API_KEY: sk-a" in text
+    assert "OPENAI_API_KEY (ai_api_key_env): sk-a" in text
     assert "sk-abcdefghijkl" not in text
     assert "REVAI_API_KEY: (not set)" in text
 
@@ -319,3 +325,70 @@ def test_cli_config_set_refreshes_in_memory_config(tmp_path, monkeypatch):
     app.save_config()
 
     assert Config.from_yaml(path).ai_model == "gpt-x"
+
+
+# --- AI key env indirection ----------------------------------------------
+
+
+def _config_get(values):
+    return lambda k, d=None: values.get(k.lower(), d)
+
+
+def test_ai_key_read_from_env_named_in_config(monkeypatch):
+    monkeypatch.setattr(
+        cfg.config_manager, "get", _config_get({"ai_api_key_env": "DEEPSEEK_API_KEY"})
+    )
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "oa-key")
+
+    s = cfg.Settings()
+
+    assert s.AI_API_KEY_ENV == "DEEPSEEK_API_KEY"
+    assert s.OPENAI_API_KEY == "ds-key"
+
+
+def test_ai_key_defaults_to_openai_env(monkeypatch):
+    monkeypatch.setattr(cfg.config_manager, "get", _config_get({}))
+    monkeypatch.delenv("AI_API_KEY_ENV", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "oa-key")
+
+    s = cfg.Settings()
+
+    assert s.AI_API_KEY_ENV == "OPENAI_API_KEY"
+    assert s.OPENAI_API_KEY == "oa-key"
+
+
+def test_ai_key_no_fallback_when_named_env_unset(monkeypatch):
+    monkeypatch.setattr(
+        cfg.config_manager, "get", _config_get({"ai_api_key_env": "DEEPSEEK_API_KEY"})
+    )
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "oa-key")
+
+    assert cfg.Settings().OPENAI_API_KEY == ""
+
+
+@pytest.mark.parametrize("key", ["DEEPSEEK_API_KEY", "gemini_api_key"])
+def test_any_api_key_name_is_secret(tmp_path, key):
+    mgr = cfg.ConfigManager(config_file=tmp_path / "config.yaml")
+
+    with pytest.raises(ValueError, match="environment variable"):
+        mgr.set(key, "x")
+
+
+def test_cli_config_show_uses_configured_ai_key_env(tmp_path, monkeypatch):
+    from lexiflow import cli
+
+    mgr = cfg.ConfigManager(config_file=tmp_path / "config.yaml")
+    mgr.set("ai_api_key_env", "DEEPSEEK_API_KEY")
+    monkeypatch.setattr(cli, "config_manager", mgr)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-abcdefghijkl")
+    out = []
+    fake = type("F", (), {"poutput": lambda self, m: out.append(m)})()
+
+    cli.TranscriptorCMD.config_show(fake, None)
+
+    text = "\n".join(out)
+    assert "DEEPSEEK_API_KEY (ai_api_key_env): ds-a" in text
+    assert "ds-abcdefghijkl" not in text
+    assert "  OPENAI_API_KEY:" not in text
