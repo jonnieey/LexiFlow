@@ -63,3 +63,21 @@ def test_date_inputs_fit_a_full_date_at_80_cols(isolated_app):
                 assert tab.query_one(wid).region.width >= 12, wid
 
     asyncio.run(_run())
+
+
+def test_all_invoice_buttons_visible_at_80_cols(isolated_app):
+    async def _run():
+        async with isolated_app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            tab = await _open_invoicing(isolated_app, pilot)
+            pane = tab.query_one("#invoice-input-pane").region
+            for wid in (
+                "#generate-invoice",
+                "#preview-markdown",
+                "#save-pdf",
+                "#save-csv",
+            ):
+                region = tab.query_one(wid).region
+                assert pane.contains_region(region), wid
+
+    asyncio.run(_run())

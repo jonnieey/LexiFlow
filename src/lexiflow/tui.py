@@ -3049,20 +3049,20 @@ class Invoice(Container):
                             classes="form-grid",
                         )
 
-                    with Horizontal(classes="button-bar"):
+                    with Horizontal(
+                        id="invoice-actions", classes="button-bar"
+                    ):
                         yield Button(
-                            "Generate Invoice",
+                            "Generate",
                             variant="primary",
                             id="generate-invoice",
                         )
+                        yield Button("Preview", id="preview-markdown")
                         yield Button(
-                            "Preview Markdown", id="preview-markdown"
+                            "Save PDF", variant="success", id="save-pdf"
                         )
                         yield Button(
-                            "Save as PDF", variant="success", id="save-pdf"
-                        )
-                        yield Button(
-                            "Save as CSV", variant="success", id="save-csv"
+                            "Save CSV", variant="success", id="save-csv"
                         )
 
                 # Bottom results pane (no switcher; we toggle visibility)

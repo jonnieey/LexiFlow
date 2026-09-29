@@ -396,6 +396,15 @@ ModalScreen {
 #invoice-form-container > .form-grid > .field-row > Label {
     width: 7;
 }
+#invoice-actions {
+    height: 1;
+    align: left top;
+    padding: 0;
+}
+#invoice-actions > Button {
+    min-width: 0;
+    margin: 0 1 0 0;
+}
 #invoice-results {
     height: 1fr;
     border: round $panel;
