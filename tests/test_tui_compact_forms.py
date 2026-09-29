@@ -16,6 +16,7 @@ from lexiflow.tui import (
     AddJobScreen,
     AddCutoffsScreen,
     ClientEditScreen,
+    JobEditScreen,
     ProfileEditScreen,
     RateEditScreen,
     TranscriptorTUI,
@@ -164,5 +165,68 @@ def test_add_job_steps_use_compact_rows(
                 if isinstance(widget, (Input, Select)):
                     assert "field-row" in widget.parent.classes, widget.id
             assert form.max_scroll_y == 0
+
+    asyncio.run(_run())
+
+
+JOB = {
+    "job_number": "123",
+    "client_id": "",
+    "status": "Pending",
+    "amount_paid": "",
+    "job_type": "normal",
+    "date_submitted": "",
+    "job_rate": "1.0",
+    "date_received": "2026-09-01",
+    "date_due": "2026-09-05",
+    "quantity": "10",
+    "total_quantity": "10",
+    "amount": "10",
+    "job_path": "/jobs/123/a.mp3",
+    "note": "",
+}
+
+
+def test_job_edit_fits_in_two_columns(isolated_app):
+    async def _run():
+        async with isolated_app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            isolated_app.push_screen(JobEditScreen(dict(JOB)))
+            await pilot.pause()
+            screen = isolated_app.screen
+            form = screen.query_one("#job-form-container")
+            for widget in screen.query("Input, Select"):
+                assert "field-row" in widget.parent.classes, widget.id
+            assert form.max_scroll_y == 0
+            for left, right in [
+                ("#date_received", "#date_due"),
+                ("#quantity", "#total_quantity"),
+                ("#status", "#job_type"),
+            ]:
+                a = screen.query_one(left).region
+                b = screen.query_one(right).region
+                assert a.y == b.y and a.right <= b.x
+            save = screen.query_one("#save")
+            assert screen.region.contains_region(save.region)
+
+    asyncio.run(_run())
+
+
+def test_job_edit_grid_still_collects_every_field(isolated_app):
+    async def _run():
+        async with isolated_app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            screen = JobEditScreen(dict(JOB, client_id=7, amount_paid=0.0))
+            isolated_app.push_screen(screen)
+            await pilot.pause()
+            values = screen.collect_values()
+            assert values["job_number"] == "123"
+            assert values["client_id"] == 7
+            assert values["amount_paid"] == 0.0
+            assert values["date_due"] == "2026-09-05"
+            assert values["job_path"] == "/jobs/123/a.mp3"
+            assert values["status"] == "Pending"
+            assert values["job_type"] == "normal"
+            assert values["total_quantity"] == 10.0
 
     asyncio.run(_run())

@@ -1713,53 +1713,59 @@ class JobEditScreen(BaseEditScreen):
         return "job-form-container"
 
     def get_fields(self):
-        yield Label("Job Number:")
-        yield Input(value=self.data.get("job_number", ""), id="job_number")
-        yield Label("Client ID:")
-        yield Input(value=str(self.data.get("client_id", "")), id="client_id")
-        yield Label("Status:")
+        d = self.data
+        date_submitted = d.get("date_submitted", "")
+        # Same initial values as before; str() only where it always was
+        values = {
+            "job_number": d.get("job_number", ""),
+            "client_id": str(d.get("client_id", "")),
+            "date_received": d.get("date_received", ""),
+            "date_due": d.get("date_due", ""),
+            "quantity": str(d.get("quantity", "")),
+            "total_quantity": str(d.get("total_quantity", "")),
+            "job_rate": str(d.get("job_rate", "")),
+            "amount": str(d.get("amount", "")),
+            "amount_paid": str(d.get("amount_paid", "")),
+            "date_submitted": date_submitted if date_submitted else "",
+            "job_path": d.get("job_path", ""),
+        }
+
+        def text(label: str, key: str) -> Horizontal:
+            return field_row(label, Input(value=values[key], id=key))
+
         statuses = ["Pending", "Done"]
-        current_status = self.data.get("status", "Pending")
-        yield Select(
-            [(s, s) for s in statuses], value=current_status, id="status"
-        )
-        yield Label("Amount Paid:")
-        yield Input(
-            value=str(self.data.get("amount_paid", "")), id="amount_paid"
-        )
-        yield Label("Job Type:")
         job_types = ["normal", "expedite", "interpreted"]
-        current_job_type = self.data.get("job_type", "normal")
-        yield Select(
-            [(jt, jt) for jt in job_types],
-            value=current_job_type,
-            id="job_type",
+        # Two columns, related fields side by side
+        yield Container(
+            text("Job Number:", "job_number"),
+            text("Client ID:", "client_id"),
+            field_row(
+                "Status:",
+                Select(
+                    [(s, s) for s in statuses],
+                    value=d.get("status", "Pending"),
+                    id="status",
+                ),
+            ),
+            field_row(
+                "Job Type:",
+                Select(
+                    [(jt, jt) for jt in job_types],
+                    value=d.get("job_type", "normal"),
+                    id="job_type",
+                ),
+            ),
+            text("Received:", "date_received"),
+            text("Due:", "date_due"),
+            text("Quantity:", "quantity"),
+            text("Total Qty:", "total_quantity"),
+            text("Job Rate:", "job_rate"),
+            text("Amount:", "amount"),
+            text("Amount Paid:", "amount_paid"),
+            text("Submitted:", "date_submitted"),
+            text("Job Path:", "job_path").add_class("span"),
+            classes="form-grid",
         )
-        yield Label("Date Submitted:")
-        date_submitted = self.data.get("date_submitted", "")
-        yield Input(
-            value=date_submitted if date_submitted else "",
-            id="date_submitted",
-        )
-        yield Label("Job Rate:")
-        yield Input(value=str(self.data.get("job_rate", "")), id="job_rate")
-        yield Label("Date Received:")
-        yield Input(
-            value=self.data.get("date_received", ""), id="date_received"
-        )
-        yield Label("Date Due:")
-        yield Input(value=self.data.get("date_due", ""), id="date_due")
-        yield Label("Quantity:")
-        yield Input(value=str(self.data.get("quantity", "")), id="quantity")
-        yield Label("Total Quantity:")
-        yield Input(
-            value=str(self.data.get("total_quantity", "")),
-            id="total_quantity",
-        )
-        yield Label("Amount:")
-        yield Input(value=str(self.data.get("amount", "")), id="amount")
-        yield Label("Job Path:")
-        yield Input(value=self.data.get("job_path", ""), id="job_path")
         yield Label("Note:")
         yield TextArea(self.data.get("note", ""), id="note")
 

@@ -214,7 +214,13 @@ ModalScreen {
 #job-edit {
     width: 1fr;
     height: 1fr;
-    padding: 1;
+    padding: 0 1;
+}
+#job-edit > .edit-title {
+    margin: 0;
+}
+#job-form-container Label {
+    color: $accent;
 }
 #config-edit {
     width: 90%;
@@ -258,10 +264,13 @@ ModalScreen {
     background: $panel;
 }
 #job-form-container {
-    height: 80%;
-    border: solid $panel;
-    margin: 1;
-    padding: 1;
+    height: 1fr;
+    border: round $panel;
+    margin: 0 0 1 0;
+    padding: 0 1;
+}
+#job-form-container TextArea {
+    height: 4;
 }
 #job-form-container > Vertical {
     height: auto;
@@ -526,3 +535,18 @@ ModalScreen {
     height: 1;
 }
 
+
+/* Two-column form: field rows laid out side by side (JobEdit etc.) */
+.form-grid {
+    layout: grid;
+    grid-size: 2;
+    grid-gutter: 0 2;
+    grid-rows: 1;
+    height: auto;
+}
+.form-grid > .field-row > Label {
+    width: 13;
+}
+.form-grid > .field-row.span {
+    column-span: 2;
+}
