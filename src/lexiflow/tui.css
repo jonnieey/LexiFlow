@@ -190,12 +190,22 @@ ModalScreen {
     margin-bottom: 1;
 }
 #doc-info {
-    margin: 1;
-    padding: 1;
-    border: solid $panel;
+    margin: 0 0 1 0;
+    padding: 0 1;
     background: $panel;
     height: auto;
-    min-height: 3;
+    min-height: 1;
+}
+#document-processing-screen {
+    width: 90%;
+    max-width: 110;
+}
+#document-processing-screen > Checkbox {
+    border: none;
+    height: 1;
+}
+#document-processing-screen > .form-grid {
+    margin: 1 0;
 }
 #doc-actions, #doc-transcription-actions {
     height: auto;
@@ -203,9 +213,6 @@ ModalScreen {
 }
 #doc-actions > Button, #doc-transcription-actions > Button {
     margin: 0 1;
-}
-#document-processing-screen > Select {
-    margin-bottom: 1;
 }
 #invoice-preview {
     width: 90%;

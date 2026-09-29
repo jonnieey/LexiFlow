@@ -16,6 +16,7 @@ from lexiflow.tui import (
     AddJobScreen,
     AddCutoffsScreen,
     ClientEditScreen,
+    DocumentProcessingScreen,
     JobEditScreen,
     ProfileEditScreen,
     RateEditScreen,
@@ -228,5 +229,41 @@ def test_job_edit_grid_still_collects_every_field(isolated_app):
             assert values["status"] == "Pending"
             assert values["job_type"] == "normal"
             assert values["total_quantity"] == 10.0
+
+    asyncio.run(_run())
+
+
+def test_document_processing_fits_small_terminal(isolated_app, tmp_path):
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    for name in ("notice.pdf", "pbs.pdf", "template.docx"):
+        (job_dir / name).touch()
+    audio = job_dir / "audio.mp3"
+    audio.write_text("fake audio")
+    job = {
+        "id": 1,
+        "job_number": "J1",
+        "job_path": str(audio),
+        # worst case: every info line shown
+        "provider": "speechmatics",
+        "external_job_id": "abc",
+        "transcription_status": "running",
+        "transcription_last_polled_at": "2026-09-29 10:00",
+        "transcription_last_error": "timeout",
+    }
+
+    async def _run():
+        async with isolated_app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            isolated_app.push_screen(DocumentProcessingScreen(job))
+            await pilot.pause()
+            screen = isolated_app.screen
+            for select in screen.query(Select):
+                assert "field-row" in select.parent.classes, select.id
+            notice = screen.query_one("#doc-notice").region
+            pbs = screen.query_one("#doc-pbs").region
+            assert notice.y == pbs.y
+            for button in screen.query("Button"):
+                assert screen.region.contains_region(button.region), button.id
 
     asyncio.run(_run())

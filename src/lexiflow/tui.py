@@ -1247,17 +1247,28 @@ class DocumentProcessingScreen(VimModalMixin, ModalScreen):
             yield Checkbox(
                 "Use existing metadata.json", id="doc-use-metadata"
             )
-            yield Label("Notice PDF:")
-            yield Select([], id="doc-notice", prompt="Select notice PDF")
-            yield Label("PBS PDF:")
-            yield Select([], id="doc-pbs", prompt="Select PBS PDF")
-            yield Label("Template (optional):")
-            yield Select([], id="doc-template", prompt="Select template")
-            yield Label("Provider (for Transcribe/Process):")
-            yield Select(
-                self.TRANSCRIPTION_PROVIDERS,
-                id="doc-provider",
-                prompt="Select a provider",
+            yield Container(
+                field_row(
+                    "Notice PDF:",
+                    Select([], id="doc-notice", prompt="Select PDF"),
+                ),
+                field_row(
+                    "PBS PDF:",
+                    Select([], id="doc-pbs", prompt="Select PDF"),
+                ),
+                field_row(
+                    "Template:",
+                    Select([], id="doc-template", prompt="(optional)"),
+                ),
+                field_row(
+                    "Provider:",
+                    Select(
+                        self.TRANSCRIPTION_PROVIDERS,
+                        id="doc-provider",
+                        prompt="Select one",
+                    ),
+                ),
+                classes="form-grid",
             )
             with Horizontal(id="doc-actions"):
                 yield Button("Extract", id="doc-extract-btn")
