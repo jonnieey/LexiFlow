@@ -1,63 +1,97 @@
 import os
-import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
+import yaml
 from dotenv import load_dotenv
+from platformdirs import user_config_dir, user_data_dir
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
 
-class ConfigManager:
-    """Manages configuration stored in ~/.config/legatoflow/config"""
+CONFIG_APP_NAME = "lexiflow"
+DATA_APP_NAME = "transcriptor"
+CONFIG_FILE_NAME = "config.yaml"
 
-    def __init__(self):
-        self.config_dir = Path.home() / ".config" / "legatoflow"
-        self.config_file = self.config_dir / "config"
+DEFAULT_CONFIG = {
+    "base_dir": f"{user_data_dir(DATA_APP_NAME)}",
+    "date_format": "%Y-%m-%d",
+    "invoice_theme": "default",
+    "display_currency": "USD",
+    "conversion_rate": 0.0,
+    "currency_segment": "",
+    "currency_receive_country": "",
+    "currency_send_country": "us",
+    "invoice_currency": "USD",
+}
+
+
+def default_config_path() -> Path:
+    """Path of the single unified config file."""
+    return Path(user_config_dir(CONFIG_APP_NAME)) / CONFIG_FILE_NAME
+
+
+class ConfigManager:
+    """Key/value access to the unified YAML config file.
+
+    Keys are accepted in the legacy LegatoFlow UPPER_CASE form and stored
+    lowercase, matching the ``Config`` model fields.
+    """
+
+    def __init__(self, config_file: Optional[Path] = None):
+        self.config_file = Path(config_file or default_config_path())
+        self.config_dir = self.config_file.parent
         self.config_data: Dict[str, Any] = {}
         self._load_config()
 
     def _load_config(self) -> None:
-        """Load configuration from file or create default"""
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-
-        if self.config_file.exists():
-            try:
-                with open(self.config_file, "r") as f:
-                    self.config_data = json.load(f)
-            except (json.JSONDecodeError, IOError) as e:
-                logger.warning(
-                    "Failed to load config from %s, starting empty: %s",
-                    self.config_file,
-                    e,
-                )
-                self.config_data = {}
-        else:
+        """Load configuration from file (empty if missing)"""
+        if not self.config_file.exists():
             self.config_data = {}
-            self._save_config()
+            return
+        try:
+            with open(self.config_file, "r") as f:
+                self.config_data = yaml.safe_load(f) or {}
+        except (yaml.YAMLError, IOError) as e:
+            logger.warning(
+                "Failed to load config from %s, starting empty: %s",
+                self.config_file,
+                e,
+            )
+            self.config_data = {}
 
     def _save_config(self) -> None:
         """Save configuration to file"""
         try:
+            self.config_dir.mkdir(parents=True, exist_ok=True)
             with open(self.config_file, "w") as f:
-                json.dump(self.config_data, f, indent=2)
+                yaml.dump(self.config_data, f)
         except IOError as e:
             logger.error("Failed to save config to %s: %s", self.config_file, e)
 
+    def _reload_for_write(self) -> None:
+        """Re-read the file so other writers' changes are kept."""
+        self._load_config()
+        if not self.config_data:
+            self.config_data = dict(DEFAULT_CONFIG)
+
     def get(self, key: str, default: Any = None) -> Any:
         """Get a configuration value"""
-        return self.config_data.get(key, default)
+        value = self.config_data.get(key.lower())
+        return default if value is None else value
 
     def set(self, key: str, value: Any) -> None:
         """Set a configuration value"""
-        self.config_data[key] = value
+        self._reload_for_write()
+        self.config_data[key.lower()] = value
         self._save_config()
 
     def delete(self, key: str) -> None:
         """Delete a configuration value"""
-        if key in self.config_data:
-            del self.config_data[key]
+        self._reload_for_write()
+        if key.lower() in self.config_data:
+            del self.config_data[key.lower()]
             self._save_config()
 
     def migrate_from_env(self, env_path: Optional[Path] = None) -> bool:

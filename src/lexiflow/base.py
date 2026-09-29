@@ -11,7 +11,6 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
-from platformdirs import user_config_dir, user_data_dir
 from sqlalchemy.engine.row import RowMapping
 
 from lexiflow.api import API
@@ -44,20 +43,7 @@ from lexiflow.utils import (
 from lexiflow.utils import str_to_date as std
 from lexiflow.utils import to_date_object
 
-APP_NAME = "transcriptor"
-CONFIG_FILE_NAME = "config.yaml"
-
-DEFAULT_CONFIG = {
-    "base_dir": f"{user_data_dir(APP_NAME)}",
-    "date_format": "%Y-%m-%d",
-    "invoice_theme": "default",
-    "display_currency": "USD",
-    "conversion_rate": 0.0,
-    "currency_segment": "",
-    "currency_receive_country": "",
-    "currency_send_country": "us",
-    "invoice_currency": "USD",
-}
+from lexiflow.config import DEFAULT_CONFIG, default_config_path
 
 logger = logging.getLogger(__name__)
 
@@ -113,8 +99,8 @@ class Transcriptor:
     ) -> tuple[Path, Path]:
         """Determine config directory and file paths."""
         if config_file is None:
-            config_dir = Path(user_config_dir(APP_NAME))
-            config_file = config_dir / CONFIG_FILE_NAME
+            config_file = default_config_path()
+            config_dir = config_file.parent
         else:
             config_file = Path(config_file)
             config_dir = config_file.parent
